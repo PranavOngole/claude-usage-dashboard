@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Token Usage</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a202c;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: #0f172a;
+      color: #fff;
+      padding: 20px 32px;
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .header .updated { font-size: 12px; color: #94a3b8; margin-top: 3px; }
+
+    /* Stats bar */
+    .stats-bar { background: #fff; border-bottom: 1px solid #e2e8f0; }
+    .stats-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 14px 32px;
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .stat .label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+    }
+    .stat .val {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-top: 1px;
+    }
+
+    /* Main layout */
+    .main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 32px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      min-height: 38px;
+    }
+    .tab-group {
+      display: flex;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .tab-group button {
+      padding: 6px 16px;
+      border: none;
+      background: transparent;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #64748b;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .tab-group button.active {
+      background: #0f172a;
+      color: #fff;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: #3b82f6;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+    }
+    .back-btn:hover { text-decoration: underline; }
+    .sep { color: #cbd5e1; font-size: 13px; }
+    .bc-label { font-size: 13px; font-weight: 600; color: #374151; }
+
+    /* Cards */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+    }
+    .card-hint {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      min-height: 16px;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 360px;
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 72px 32px;
+    }
+    .empty h2 { font-size: 20px; color: #374151; margin-bottom: 10px; }
+    .empty p { font-size: 14px; color: #64748b; max-width: 480px; margin: 0 auto 8px; line-height: 1.65; }
+    .empty code {
+      background: #f1f5f9;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      color: #374151;
+    }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+    thead th {
+      background: #f8fafc;
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #64748b;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    thead th.num { text-align: right; }
+    tbody td {
+      padding: 9px 14px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #374151;
+      white-space: nowrap;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #f8fafc; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; color: #475569; }
+    td.bold { text-align: right; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .model-cell { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    @media (max-width: 640px) {
+      .header-inner, .stats-inner, .main { padding-left: 16px; padding-right: 16px; }
+      .stats-inner { gap: 20px; }
+      .stat .val { font-size: 22px; }
+      .chart-wrap { height: 280px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-inner">
+    <div>
+      <h1>Claude Token Usage</h1>
+      <div class="updated" id="updated">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stats-inner" id="stats"></div>
+</div>
+
+<div class="main">
+  <div class="controls" id="controls">
+    <div class="tab-group" id="tabs">
+      <button class="active" data-view="timeline">By Date</button>
+      <button data-view="models">By Model</button>
+    </div>
+    <div id="breadcrumb" style="display:none; align-items:center; gap:10px;">
+      <button class="back-btn" id="back-btn">&#8592; Back</button>
+      <span class="sep">/</span>
+      <span class="bc-label" id="bc-label"></span>
+    </div>
+  </div>
+
+  <div class="card" id="chart-card">
+    <div id="empty-state" style="display:none">
+      <div class="empty">
+        <h2>No usage data yet</h2>
+        <p>
+          This dashboard reads from <code>data/usage.json</code>, which is updated daily
+          by the GitHub Actions workflow. Trigger the workflow manually to populate it now.
+        </p>
+        <p style="margin-top:12px">
+          Note: this requires an <strong>Admin API key</strong> (<code>sk-ant-admin01-...</code>)
+          and an Anthropic Organization account.
+        </p>
+      </div>
+    </div>
+    <div id="chart-content">
+      <div class="card-title" id="chart-title"></div>
+      <div class="card-hint" id="chart-hint"></div>
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap card" id="table-card">
+    <table id="data-table">
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ---- Constants ----
+
+const MODEL_COLORS = [
+  '#f97316','#3b82f6','#10b981','#a855f7','#ef4444',
+  '#eab308','#06b6d4','#ec4899','#84cc16','#f59e0b',
+  '#6366f1','#14b8a6','#fb7185','#a3e635','#38bdf8',
+];
+
+const TOKEN_COLORS = {
+  input:       '#3b82f6',
+  cacheRead:   '#10b981',
+  cacheCreate: '#a855f7',
+  output:      '#f97316',
+};
+
+// ---- State ----
+
+let chart = null;
+let summary = null;
+let view = 'timeline';
+let drill = null;
+
+// ---- Utilities ----
+
+function fmt(n) {
+  n = n || 0;
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+
+function fmtDate(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function sumRecord(r) {
+  if (!r) return 0;
+  return (r.input || 0) + (r.cacheRead || 0) + (r.cacheCreate || 0) + (r.output || 0);
+}
+
+function modelColor(model) {
+  const idx = summary.models.indexOf(model);
+  return MODEL_COLORS[idx % MODEL_COLORS.length];
+}
+
+// ---- Parse API response ----
+
+function parseData(raw) {
+  const byDate  = {};
+  const byModel = {};
+  const dates   = new Set();
+  const models  = new Set();
+
+  for (const bucket of (raw.data || [])) {
+    const date = bucket.starting_at.slice(0, 10);
+    dates.add(date);
+
+    for (const r of (bucket.results || [])) {
+      const model = r.model || 'unknown';
+      models.add(model);
+
+      const cc = r.cache_creation || {};
+      const record = {
+        input:       r.uncached_input_tokens || 0,
+        cacheRead:   r.cache_read_input_tokens || 0,
+        cacheCreate: (cc.ephemeral_1h_input_tokens || 0) + (cc.ephemeral_5m_input_tokens || 0),
+        output:      r.output_tokens || 0,
+      };
+
+      if (!byDate[date]) byDate[date] = {};
+      byDate[date][model] = record;
+
+      if (!byModel[model]) byModel[model] = {};
+      byModel[model][date] = record;
+    }
+  }
+
+  return {
+    byDate,
+    byModel,
+    dates:  [...dates].sort(),
+    models: [...models].sort(),
+  };
+}
+
+// ---- Stats bar ----
+
+function renderStats(raw) {
+  let totalAll = 0, totalIn = 0, totalOut = 0;
+  for (const bucket of (raw.data || [])) {
+    for (const r of (bucket.results || [])) {
+      const cc = r.cache_creation || {};
+      const inp = (r.uncached_input_tokens || 0) + (r.cache_read_input_tokens || 0)
+               + (cc.ephemeral_1h_input_tokens || 0) + (cc.ephemeral_5m_input_tokens || 0);
+      const out = r.output_tokens || 0;
+      totalIn  += inp;
+      totalOut += out;
+      totalAll += inp + out;
+    }
+  }
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="label">Total Tokens</div><div class="val">${fmt(totalAll)}</div></div>
+    <div class="stat"><div class="label">Input</div><div class="val">${fmt(totalIn)}</div></div>
+    <div class="stat"><div class="label">Output</div><div class="val">${fmt(totalOut)}</div></div>
+    <div class="stat"><div class="label">Models</div><div class="val">${summary.models.length}</div></div>
+    <div class="stat"><div class="label">Days</div><div class="val">${summary.dates.length}</div></div>
+  `;
+}
+
+// ---- Chart lifecycle ----
+
+function destroyChart() {
+  if (chart) { chart.destroy(); chart = null; }
+}
+
+// ---- Main render dispatcher ----
+
+function renderView() {
+  destroyChart();
+  if (drill) {
+    drill.type === 'date' ? renderDateDrill(drill.value) : renderModelDrill(drill.value);
+    return;
+  }
+  view === 'timeline' ? renderTimeline() : renderModelView();
+}
+
+// ---- View: By Date (stacked bar per day, stacked by model) ----
+
+function renderTimeline() {
+  document.getElementById('chart-title').textContent = 'Daily token usage';
+  document.getElementById('chart-hint').textContent  = 'Click any bar to see model breakdown for that day.';
+
+  const { dates, models, byDate } = summary;
+
+  const datasets = models.map((model, i) => ({
+    label: model,
+    data: dates.map(date => sumRecord(byDate[date]?.[model])),
+    backgroundColor: MODEL_COLORS[i % MODEL_COLORS.length],
+    borderWidth: 0,
+  }));
+
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: dates.map(fmtDate), datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 12 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmt(ctx.raw)}`,
+            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, ticks: { callback: v => fmt(v) } },
+      },
+      onClick: (e, els) => {
+        if (!els.length) return;
+        drill = { type: 'date', value: dates[els[0].index] };
+        updateNav();
+        renderView();
+      },
+    },
+  });
+
+  // Table: date rows, model columns
+  const models_sorted = [...models];
+  document.getElementById('thead').innerHTML =
+    `<th>Date</th>${models_sorted.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th>`;
+
+  document.getElementById('tbody').innerHTML = [...dates].reverse().map(date => {
+    const dayTotal = models_sorted.reduce((s, m) => s + sumRecord(byDate[date]?.[m]), 0);
+    return `<tr>
+      <td>${fmtDate(date)}</td>
+      ${models_sorted.map(m => `<td class="num">${fmt(sumRecord(byDate[date]?.[m]))}</td>`).join('')}
+      <td class="bold">${fmt(dayTotal)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---- View: By Model (horizontal bar, total per model) ----
+
+function renderModelView() {
+  document.getElementById('chart-title').textContent = 'Token usage by model';
+  document.getElementById('chart-hint').textContent  = 'Click any bar to see daily trend for that model.';
+
+  const { models, byModel, dates } = summary;
+
+  const sorted = models
+    .map((model, i) => ({
+      model,
+      color: MODEL_COLORS[i % MODEL_COLORS.length],
+      total: dates.reduce((s, d) => s + sumRecord(byModel[model]?.[d]), 0),
+      agg: dates.reduce((agg, d) => {
+        const r = byModel[model]?.[d] || {};
+        agg.input       += r.input       || 0;
+        agg.cacheRead   += r.cacheRead   || 0;
+        agg.cacheCreate += r.cacheCreate || 0;
+        agg.output      += r.output      || 0;
+        return agg;
+      }, { input: 0, cacheRead: 0, cacheCreate: 0, output: 0 }),
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(x => x.model),
+      datasets: [{ data: sorted.map(x => x.total), backgroundColor: sorted.map(x => x.color), borderWidth: 0, borderRadius: 4 }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } },
+      },
+      scales: {
+        x: { ticks: { callback: v => fmt(v) } },
+        y: { grid: { display: false } },
+      },
+      onClick: (e, els) => {
+        if (!els.length) return;
+        drill = { type: 'model', value: sorted[els[0].index].model };
+        updateNav();
+        renderView();
+      },
+    },
+  });
+
+  // Table
+  document.getElementById('thead').innerHTML =
+    `<th>Model</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th>`;
+
+  document.getElementById('tbody').innerHTML = sorted.map(x => `
+    <tr>
+      <td><div class="model-cell"><span class="dot" style="background:${x.color}"></span>${x.model}</div></td>
+      <td class="num">${fmt(x.agg.input)}</td>
+      <td class="num">${fmt(x.agg.cacheRead)}</td>
+      <td class="num">${fmt(x.agg.cacheCreate)}</td>
+      <td class="num">${fmt(x.agg.output)}</td>
+      <td class="bold">${fmt(x.total)}</td>
+    </tr>`).join('');
+}
+
+// ---- Drilldown: single date -> model breakdown ----
+
+function renderDateDrill(date) {
+  document.getElementById('chart-title').textContent = `Model breakdown: ${fmtDate(date)}`;
+  document.getElementById('chart-hint').textContent  = '';
+
+  const { models, byDate } = summary;
+  const dayData = byDate[date] || {};
+  const active  = models.filter(m => dayData[m]);
+  const totals  = active.map(m => sumRecord(dayData[m]));
+  const dayTotal = totals.reduce((s, v) => s + v, 0);
+
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: active,
+      datasets: [{
+        data: totals,
+        backgroundColor: active.map(m => modelColor(m)),
+        borderWidth: 2,
+        borderColor: '#fff',
+        hoverOffset: 8,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 12 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const pct = dayTotal > 0 ? ((ctx.raw / dayTotal) * 100).toFixed(1) : '0';
+              return `${ctx.label}: ${fmt(ctx.raw)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
+
+  document.getElementById('thead').innerHTML =
+    `<th>Model</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th><th class="num">Share</th>`;
+
+  document.getElementById('tbody').innerHTML = active.map(model => {
+    const r = dayData[model];
+    const t = sumRecord(r);
+    const pct = dayTotal > 0 ? ((t / dayTotal) * 100).toFixed(1) + '%' : '0%';
+    return `<tr>
+      <td><div class="model-cell"><span class="dot" style="background:${modelColor(model)}"></span>${model}</div></td>
+      <td class="num">${fmt(r.input)}</td>
+      <td class="num">${fmt(r.cacheRead)}</td>
+      <td class="num">${fmt(r.cacheCreate)}</td>
+      <td class="num">${fmt(r.output)}</td>
+      <td class="bold">${fmt(t)}</td>
+      <td class="num">${pct}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---- Drilldown: single model -> daily trend ----
+
+function renderModelDrill(model) {
+  document.getElementById('chart-title').textContent = `Daily usage: ${model}`;
+  document.getElementById('chart-hint').textContent  = 'Stacked by token type.';
+
+  const { dates, byModel } = summary;
+  const mData = byModel[model] || {};
+
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: dates.map(fmtDate),
+      datasets: [
+        { label: 'Input',        data: dates.map(d => mData[d]?.input       || 0), backgroundColor: TOKEN_COLORS.input,       borderWidth: 0 },
+        { label: 'Cache Read',   data: dates.map(d => mData[d]?.cacheRead   || 0), backgroundColor: TOKEN_COLORS.cacheRead,   borderWidth: 0 },
+        { label: 'Cache Create', data: dates.map(d => mData[d]?.cacheCreate || 0), backgroundColor: TOKEN_COLORS.cacheCreate, borderWidth: 0 },
+        { label: 'Output',       data: dates.map(d => mData[d]?.output      || 0), backgroundColor: TOKEN_COLORS.output,      borderWidth: 0 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 12 }, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmt(ctx.raw)}`,
+            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, ticks: { callback: v => fmt(v) } },
+      },
+    },
+  });
+
+  const activeDates = dates.filter(d => mData[d]);
+
+  document.getElementById('thead').innerHTML =
+    `<th>Date</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th>`;
+
+  document.getElementById('tbody').innerHTML = [...activeDates].reverse().map(date => {
+    const r = mData[date];
+    return `<tr>
+      <td>${fmtDate(date)}</td>
+      <td class="num">${fmt(r.input)}</td>
+      <td class="num">${fmt(r.cacheRead)}</td>
+      <td class="num">${fmt(r.cacheCreate)}</td>
+      <td class="num">${fmt(r.output)}</td>
+      <td class="bold">${fmt(sumRecord(r))}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---- Navigation state ----
+
+function updateNav() {
+  const tabs = document.getElementById('tabs');
+  const bc   = document.getElementById('breadcrumb');
+  const bcLabel = document.getElementById('bc-label');
+
+  if (drill) {
+    tabs.style.display = 'none';
+    bc.style.display   = 'flex';
+    bcLabel.textContent = drill.type === 'date' ? fmtDate(drill.value) : drill.value;
+  } else {
+    tabs.style.display = 'flex';
+    bc.style.display   = 'none';
+  }
+}
+
+// ---- Empty state ----
+
+function showEmpty() {
+  document.getElementById('empty-state').style.display = 'block';
+  document.getElementById('chart-content').style.display = 'none';
+  document.getElementById('table-card').style.display = 'none';
+  document.getElementById('updated').textContent = 'No data';
+}
+
+// ---- Init ----
+
+async function init() {
+  let raw;
+  try {
+    const resp = await fetch('data/usage.json');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    raw = await resp.json();
+  } catch (e) {
+    showEmpty();
+    return;
+  }
+
+  if (!raw.data || raw.data.length === 0) {
+    showEmpty();
+    return;
+  }
+
+  summary = parseData(raw);
+
+  document.getElementById('updated').textContent = raw.fetched_at
+    ? `Last updated: ${new Date(raw.fetched_at).toLocaleString()}`
+    : '';
+
+  renderStats(raw);
+  renderView();
+
+  // Tab switching
+  document.getElementById('tabs').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-view]');
+    if (!btn) return;
+    view = btn.dataset.view;
+    drill = null;
+    document.querySelectorAll('#tabs button').forEach(b =>
+      b.classList.toggle('active', b.dataset.view === view));
+    updateNav();
+    renderView();
+  });
+
+  // Back button
+  document.getElementById('back-btn').addEventListener('click', () => {
+    drill = null;
+    updateNav();
+    renderView();
+  });
+}
+
+init();
+</script>
+</body>
+</html>

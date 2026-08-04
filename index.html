@@ -103,6 +103,24 @@
       background: #fcfcfb;
       color: #0b0b0b;
     }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    .refresh-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(252,252,251,0.10);
+      border: none;
+      border-radius: 9px;
+      color: rgba(252,252,251,0.75);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .refresh-btn:hover { background: rgba(252,252,251,0.18); color: #fcfcfb; }
+    .refresh-btn svg { width: 16px; height: 16px; }
+    .refresh-btn.spinning svg { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Stats bar */
     .stats-bar {
@@ -287,9 +305,17 @@
       <h1>Claude Token Usage</h1>
       <div class="updated" id="updated">Loading...</div>
     </div>
-    <div class="source-tabs" id="source-tabs">
-      <button data-source="subscription" class="active">Claude Code</button>
-      <button data-source="api">API</button>
+    <div class="header-right">
+      <div class="source-tabs" id="source-tabs">
+        <button data-source="subscription" class="active">Claude Code</button>
+        <button data-source="api">API</button>
+      </div>
+      <button class="refresh-btn" id="refresh-btn" title="Reload the latest published data" aria-label="Refresh data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+          <polyline points="21 3 21 9 15 9"/>
+        </svg>
+      </button>
     </div>
   </div>
 </div>
@@ -1042,7 +1068,9 @@ async function loadSource() {
   destroyChart();
   let raw;
   try {
-    const resp = await fetch(SOURCES[source].file);
+    // Cache-bust so a refresh always pulls the newest published data
+    // rather than a stale CDN/browser copy.
+    const resp = await fetch(`${SOURCES[source].file}?t=${Date.now()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     raw = await resp.json();
   } catch (e) {
@@ -1098,6 +1126,17 @@ function init() {
     drill = null;
     updateNav();
     renderView();
+  });
+
+  // Refresh button: re-fetch the current source and re-render
+  document.getElementById('refresh-btn').addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    if (btn.classList.contains('spinning')) return;
+    btn.classList.add('spinning');
+    const started = Date.now();
+    await loadSource();
+    // Keep the spin visible long enough to register as feedback
+    setTimeout(() => btn.classList.remove('spinning'), Math.max(0, 600 - (Date.now() - started)));
   });
 
   // Re-render charts when the OS theme flips, so chart ink/grid/series

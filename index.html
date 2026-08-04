@@ -6,62 +6,138 @@
   <title>Claude Token Usage</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
+    :root {
+      color-scheme: light dark;
+      --page:        #f9f9f7;
+      --surface:     #fcfcfb;
+      --ink:         #0b0b0b;
+      --ink-2:       #52514e;
+      --muted:       #898781;
+      --grid:        #e1e0d9;
+      --border:      rgba(11,11,11,0.10);
+      --header-bg:   #141413;
+      --header-ink:  #fcfcfb;
+      --header-mut:  rgba(252,252,251,0.55);
+      --hover-wash:  #f4f3f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --page:        #0d0d0d;
+        --surface:     #1a1a19;
+        --ink:         #ffffff;
+        --ink-2:       #c3c2b7;
+        --muted:       #898781;
+        --grid:        #2c2c2a;
+        --border:      rgba(255,255,255,0.10);
+        --header-bg:   #141413;
+        --header-ink:  #fcfcfb;
+        --header-mut:  rgba(252,252,251,0.55);
+        --hover-wash:  #22221f;
+      }
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f0f2f5;
-      color: #1a202c;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--page);
+      color: var(--ink);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
 
     /* Header */
     .header {
-      background: #0f172a;
-      color: #fff;
-      padding: 20px 32px;
+      background: var(--header-bg);
+      color: var(--header-ink);
+      padding: 26px 36px;
     }
     .header-inner {
-      max-width: 1400px;
+      max-width: 1360px;
       margin: 0 auto;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
     }
-    .header h1 { font-size: 20px; font-weight: 700; }
-    .header .updated { font-size: 12px; color: #94a3b8; margin-top: 3px; }
+    .header .eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--header-mut);
+      margin-bottom: 5px;
+    }
+    .header h1 {
+      font-size: 21px;
+      font-weight: 650;
+      letter-spacing: -0.015em;
+    }
+    .header .updated {
+      font-size: 12px;
+      color: var(--header-mut);
+      margin-top: 5px;
+    }
+    .source-tabs {
+      display: flex;
+      background: rgba(252,252,251,0.10);
+      border-radius: 9px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .source-tabs button {
+      padding: 7px 18px;
+      border: none;
+      background: transparent;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 550;
+      font-family: inherit;
+      color: rgba(252,252,251,0.65);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .source-tabs button:hover { color: #fcfcfb; }
+    .source-tabs button.active {
+      background: #fcfcfb;
+      color: #0b0b0b;
+    }
 
     /* Stats bar */
-    .stats-bar { background: #fff; border-bottom: 1px solid #e2e8f0; }
+    .stats-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
     .stats-inner {
-      max-width: 1400px;
+      max-width: 1360px;
       margin: 0 auto;
-      padding: 14px 32px;
+      padding: 20px 36px;
       display: flex;
-      gap: 40px;
+      gap: 56px;
       flex-wrap: wrap;
     }
     .stat .label {
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #64748b;
+      letter-spacing: 0.11em;
+      color: var(--muted);
     }
     .stat .val {
-      font-size: 26px;
-      font-weight: 800;
-      color: #0f172a;
-      letter-spacing: -0.03em;
-      line-height: 1.15;
-      margin-top: 1px;
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.025em;
+      line-height: 1.2;
+      margin-top: 2px;
     }
 
     /* Main layout */
     .main {
-      max-width: 1400px;
+      max-width: 1360px;
       margin: 0 auto;
-      padding: 24px 32px;
+      padding: 28px 36px 48px;
     }
 
     /* Controls */
@@ -69,134 +145,136 @@
       display: flex;
       align-items: center;
       gap: 16px;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
       flex-wrap: wrap;
-      min-height: 38px;
+      min-height: 40px;
     }
     .tab-group {
       display: flex;
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9px;
       padding: 3px;
       gap: 2px;
     }
     .tab-group button {
-      padding: 6px 16px;
+      padding: 7px 18px;
       border: none;
       background: transparent;
-      border-radius: 6px;
+      border-radius: 7px;
       font-size: 13px;
-      font-weight: 500;
-      color: #64748b;
+      font-weight: 550;
+      font-family: inherit;
+      color: var(--ink-2);
       cursor: pointer;
-      transition: background 0.12s, color 0.12s;
+      transition: background 0.15s, color 0.15s;
     }
+    .tab-group button:hover { background: var(--hover-wash); }
     .tab-group button.active {
-      background: #0f172a;
-      color: #fff;
+      background: var(--header-bg);
+      color: #fcfcfb;
     }
     .back-btn {
       background: none;
       border: none;
-      color: #3b82f6;
+      color: var(--ink-2);
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 550;
+      font-family: inherit;
       cursor: pointer;
       padding: 0;
     }
-    .back-btn:hover { text-decoration: underline; }
-    .sep { color: #cbd5e1; font-size: 13px; }
-    .bc-label { font-size: 13px; font-weight: 600; color: #374151; }
+    .back-btn:hover { color: var(--ink); text-decoration: underline; }
+    .sep { color: var(--muted); font-size: 13px; }
+    .bc-label { font-size: 13px; font-weight: 600; color: var(--ink); }
 
     /* Cards */
     .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 16px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 26px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     }
     .card-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #374151;
-      margin-bottom: 4px;
+      font-size: 15px;
+      font-weight: 650;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+      margin-bottom: 3px;
     }
     .card-hint {
       font-size: 12px;
-      color: #94a3b8;
-      margin-bottom: 16px;
-      min-height: 16px;
+      color: var(--muted);
+      margin-bottom: 18px;
+      min-height: 15px;
     }
     .chart-wrap {
       position: relative;
-      height: 360px;
+      height: 380px;
     }
 
     /* Empty state */
-    .empty {
-      text-align: center;
-      padding: 72px 32px;
-    }
-    .empty h2 { font-size: 20px; color: #374151; margin-bottom: 10px; }
-    .empty p { font-size: 14px; color: #64748b; max-width: 480px; margin: 0 auto 8px; line-height: 1.65; }
+    .empty { text-align: center; padding: 76px 32px; }
+    .empty h2 { font-size: 19px; font-weight: 650; color: var(--ink); margin-bottom: 10px; }
+    .empty p { font-size: 14px; color: var(--ink-2); max-width: 480px; margin: 0 auto 8px; line-height: 1.65; }
     .empty code {
-      background: #f1f5f9;
+      background: var(--hover-wash);
       padding: 2px 7px;
-      border-radius: 4px;
+      border-radius: 5px;
       font-size: 12px;
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      color: #374151;
+      font-family: ui-monospace, "SF Mono", monospace;
+      color: var(--ink);
     }
 
     /* Table */
-    .table-wrap { overflow-x: auto; border-radius: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; }
+    .table-wrap { overflow-x: auto; padding: 10px 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
     thead th {
-      background: #f8fafc;
       padding: 10px 14px;
       text-align: left;
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 650;
       text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: #64748b;
-      border-bottom: 1px solid #e2e8f0;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--grid);
       white-space: nowrap;
     }
     thead th.num { text-align: right; }
     tbody td {
-      padding: 9px 14px;
-      border-bottom: 1px solid #f1f5f9;
-      color: #374151;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--grid);
+      color: var(--ink-2);
       white-space: nowrap;
     }
     tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover td { background: #f8fafc; }
+    tbody tr:hover td { background: var(--hover-wash); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+    td.bold { text-align: right; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
     tr.total-row td {
       font-weight: 700;
-      color: #0f172a;
-      background: #f8fafc;
-      border-top: 2px solid #e2e8f0;
+      color: var(--ink);
+      background: transparent;
+      border-top: 2px solid var(--grid);
+      border-bottom: none;
     }
-    tr.total-row:hover td { background: #f8fafc; }
+    tr.total-row:hover td { background: transparent; }
+    .model-cell { display: flex; align-items: center; gap: 9px; color: var(--ink); font-weight: 500; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
     .rates-note {
       font-size: 11px;
-      color: #94a3b8;
-      padding: 10px 14px 4px;
-      line-height: 1.6;
+      color: var(--muted);
+      padding: 14px 14px 4px;
+      line-height: 1.7;
     }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; color: #475569; }
-    td.bold { text-align: right; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
-    .model-cell { display: flex; align-items: center; gap: 8px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
     @media (max-width: 640px) {
-      .header-inner, .stats-inner, .main { padding-left: 16px; padding-right: 16px; }
-      .stats-inner { gap: 20px; }
-      .stat .val { font-size: 22px; }
-      .chart-wrap { height: 280px; }
+      .header, .stats-inner, .main { padding-left: 18px; padding-right: 18px; }
+      .stats-inner { gap: 26px; }
+      .stat .val { font-size: 24px; }
+      .chart-wrap { height: 290px; }
     }
   </style>
 </head>
@@ -205,10 +283,11 @@
 <div class="header">
   <div class="header-inner">
     <div>
+      <div class="eyebrow">Anthropic Usage</div>
       <h1>Claude Token Usage</h1>
       <div class="updated" id="updated">Loading...</div>
     </div>
-    <div class="tab-group" id="source-tabs">
+    <div class="source-tabs" id="source-tabs">
       <button data-source="subscription" class="active">Claude Code</button>
       <button data-source="api">API</button>
     </div>
@@ -222,8 +301,8 @@
 <div class="main">
   <div class="controls" id="controls">
     <div class="tab-group" id="tabs">
-      <button class="active" data-view="timeline">By Date</button>
-      <button data-view="models">By Model</button>
+      <button class="active" data-view="models">By Model</button>
+      <button data-view="timeline">By Date</button>
     </div>
     <div id="breadcrumb" style="display:none; align-items:center; gap:10px;">
       <button class="back-btn" id="back-btn">&#8592; Back</button>
@@ -254,20 +333,38 @@
 </div>
 
 <script>
-// ---- Constants ----
+// ---- Palette (validated categorical slots, light + dark) ----
 
-const MODEL_COLORS = [
-  '#f97316','#3b82f6','#10b981','#a855f7','#ef4444',
-  '#eab308','#06b6d4','#ec4899','#84cc16','#f59e0b',
-  '#6366f1','#14b8a6','#fb7185','#a3e635','#38bdf8',
+const SERIES_LIGHT = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7','#e34948'];
+const SERIES_DARK  = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
+
+// Fixed slot per model family, so a model keeps its color across views,
+// sources, and data refreshes. Unknown models take the next free slot.
+const MODEL_SLOTS = [
+  ['claude-fable-5',   0], ['claude-mythos', 0],
+  ['claude-opus-4-8',  1],
+  ['claude-opus-5',    2],
+  ['claude-sonnet-5',  3],
+  ['claude-sonnet-4-6',4],
+  ['claude-haiku-4-5', 5],
+  ['claude-opus-4',    6],
+  ['claude-sonnet-4',  7],
 ];
 
-const TOKEN_COLORS = {
-  input:       '#3b82f6',
-  cacheRead:   '#10b981',
-  cacheCreate: '#a855f7',
-  output:      '#f97316',
-};
+// Token-type colors: the three input kinds as one blue ramp, output as the
+// accent hue.
+const TOKEN_COLORS_LIGHT = { input:'#2a78d6', cacheRead:'#9ec5f4', cacheCreate:'#0d366b', output:'#eb6834' };
+const TOKEN_COLORS_DARK  = { input:'#3987e5', cacheRead:'#cde2fb', cacheCreate:'#184f95', output:'#d95926' };
+
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+function isDark() { return darkQuery.matches; }
+function seriesPalette() { return isDark() ? SERIES_DARK : SERIES_LIGHT; }
+function tokenColors() { return isDark() ? TOKEN_COLORS_DARK : TOKEN_COLORS_LIGHT; }
+function theme() {
+  return isDark()
+    ? { ink:'#ffffff', ink2:'#c3c2b7', muted:'#898781', grid:'#2c2c2a', surface:'#1a1a19', tipBg:'#2c2c2a', tipInk:'#ffffff' }
+    : { ink:'#0b0b0b', ink2:'#52514e', muted:'#898781', grid:'#e1e0d9', surface:'#fcfcfb', tipBg:'#0b0b0b', tipInk:'#fcfcfb' };
+}
 
 // API list prices in $ per million tokens: [model prefix, input, output].
 // Longest/most specific prefixes first. Cache reads bill at 10% of the
@@ -342,7 +439,7 @@ const SOURCES = {
 let chart = null;
 let summary = null;
 let source = 'subscription';
-let view = 'timeline';
+let view = 'models';
 let drill = null;
 
 // ---- Utilities ----
@@ -366,11 +463,27 @@ function sumRecord(r) {
 }
 
 function modelColor(model) {
-  const idx = summary.models.indexOf(model);
-  return MODEL_COLORS[idx % MODEL_COLORS.length];
+  return seriesPalette()[summary.slotOf[model] % 8];
 }
 
 // ---- Parse API response ----
+
+function assignSlots(models) {
+  const slotOf = {};
+  const taken = new Set();
+  for (const m of models) {
+    const hit = MODEL_SLOTS.find(([prefix]) => m.startsWith(prefix));
+    if (hit && !taken.has(hit[1])) { slotOf[m] = hit[1]; taken.add(hit[1]); }
+  }
+  let next = 0;
+  for (const m of models) {
+    if (slotOf[m] !== undefined) continue;
+    while (taken.has(next % 8)) next++;
+    slotOf[m] = next % 8;
+    taken.add(next % 8);
+  }
+  return slotOf;
+}
 
 function parseData(raw) {
   const byDate  = {};
@@ -404,11 +517,17 @@ function parseData(raw) {
     }
   }
 
+  const modelList = [...models].sort();
+  const slotOf = assignSlots(modelList);
   return {
     byDate,
     byModel,
     dates:  [...dates].sort(),
-    models: [...models].sort(),
+    models: modelList,
+    slotOf,
+    // Slot order is the validated palette adjacency; stacks, legends, and
+    // table columns all follow it.
+    modelsBySlot: [...modelList].sort((a, b) => slotOf[a] - slotOf[b]),
   };
 }
 
@@ -449,6 +568,62 @@ function destroyChart() {
   if (chart) { chart.destroy(); chart = null; }
 }
 
+function baseFont() {
+  return { family: 'system-ui, -apple-system, "Segoe UI", sans-serif', size: 12 };
+}
+
+function legendOpts() {
+  return {
+    position: 'top',
+    align: 'end',
+    labels: {
+      font: baseFont(),
+      color: theme().ink2,
+      usePointStyle: true,
+      pointStyle: 'circle',
+      boxWidth: 7,
+      boxHeight: 7,
+      padding: 16,
+    },
+  };
+}
+
+function tooltipOpts(extra = {}) {
+  const t = theme();
+  return {
+    backgroundColor: t.tipBg,
+    titleColor: t.tipInk,
+    bodyColor: t.tipInk,
+    titleFont: { ...baseFont(), weight: '600' },
+    bodyFont: baseFont(),
+    padding: 10,
+    cornerRadius: 8,
+    boxPadding: 4,
+    usePointStyle: true,
+    ...extra,
+  };
+}
+
+function xAxis(opts = {}) {
+  const t = theme();
+  return {
+    grid: { display: false },
+    border: { color: t.grid },
+    ticks: { font: baseFont(), color: t.muted, maxRotation: 0, autoSkipPadding: 12 },
+    ...opts,
+  };
+}
+
+function yAxis(opts = {}) {
+  const t = theme();
+  return {
+    grid: { color: t.grid, drawTicks: false },
+    border: { display: false },
+    ticks: { font: baseFont(), color: t.muted, padding: 8, callback: v => fmt(v) },
+    ...opts,
+  };
+}
+
 // ---- Main render dispatcher ----
 
 function renderView() {
@@ -457,94 +632,21 @@ function renderView() {
     drill.type === 'date' ? renderDateDrill(drill.value) : renderModelDrill(drill.value);
     return;
   }
-  view === 'timeline' ? renderTimeline() : renderModelView();
-}
-
-// ---- View: By Date (stacked bar per day, stacked by model) ----
-
-function renderTimeline() {
-  document.getElementById('chart-title').textContent = 'Daily token usage';
-  document.getElementById('chart-hint').textContent  = 'Click any bar to see model breakdown for that day.';
-
-  const { dates, models, byDate } = summary;
-
-  const datasets = models.map((model, i) => ({
-    label: model,
-    data: dates.map(date => sumRecord(byDate[date]?.[model])),
-    backgroundColor: MODEL_COLORS[i % MODEL_COLORS.length],
-    borderWidth: 0,
-  }));
-
-  const ctx = document.getElementById('chart').getContext('2d');
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: dates.map(fmtDate), datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'top', labels: { font: { size: 12 }, boxWidth: 12 } },
-        tooltip: {
-          callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${fmt(ctx.raw)}`,
-            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
-          },
-        },
-      },
-      scales: {
-        x: { stacked: true, grid: { display: false } },
-        y: { stacked: true, ticks: { callback: v => fmt(v) } },
-      },
-      onClick: (e, els) => {
-        if (!els.length) return;
-        drill = { type: 'date', value: dates[els[0].index] };
-        updateNav();
-        renderView();
-      },
-    },
-  });
-
-  // Table: date rows, model columns
-  const models_sorted = [...models];
-  document.getElementById('thead').innerHTML =
-    `<th>Date</th>${models_sorted.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th><th class="num">Est. Cost</th>`;
-
-  const rows = [...dates].reverse().map(date => {
-    const dayTotal = models_sorted.reduce((s, m) => s + sumRecord(byDate[date]?.[m]), 0);
-    const dayCost  = models_sorted.reduce((s, m) => s + costOf(byDate[date]?.[m], m), 0);
-    return `<tr>
-      <td>${fmtDate(date)}</td>
-      ${models_sorted.map(m => `<td class="num">${fmt(sumRecord(byDate[date]?.[m]))}</td>`).join('')}
-      <td class="bold">${fmt(dayTotal)}</td>
-      <td class="bold">${fmtUSD(dayCost)}</td>
-    </tr>`;
-  }).join('');
-
-  const grandTotal = dates.reduce((s, d) => s + models_sorted.reduce((t, m) => t + sumRecord(byDate[d]?.[m]), 0), 0);
-  const grandCost  = dates.reduce((s, d) => s + models_sorted.reduce((t, m) => t + costOf(byDate[d]?.[m], m), 0), 0);
-  const totalRow = `<tr class="total-row">
-    <td>Total</td>
-    ${models_sorted.map(m => `<td class="num">${fmt(dates.reduce((s, d) => s + sumRecord(byDate[d]?.[m]), 0))}</td>`).join('')}
-    <td class="num">${fmt(grandTotal)}</td>
-    <td class="num">${fmtUSD(grandCost)}</td>
-  </tr>`;
-
-  document.getElementById('tbody').innerHTML = rows + totalRow;
-  renderRatesNote();
+  view === 'models' ? renderModelView() : renderTimeline();
 }
 
 // ---- View: By Model (horizontal bar, total per model) ----
 
 function renderModelView() {
   document.getElementById('chart-title').textContent = 'Token usage by model';
-  document.getElementById('chart-hint').textContent  = 'Click any bar to see daily trend for that model.';
+  document.getElementById('chart-hint').textContent  = 'Click any bar to see the daily trend for that model.';
 
-  const { models, byModel, dates } = summary;
+  const { byModel, dates } = summary;
 
-  const sorted = models
-    .map((model, i) => ({
+  const sorted = summary.modelsBySlot
+    .map(model => ({
       model,
-      color: MODEL_COLORS[i % MODEL_COLORS.length],
+      color: modelColor(model),
       total: dates.reduce((s, d) => s + sumRecord(byModel[model]?.[d]), 0),
       cost:  dates.reduce((s, d) => s + costOf(byModel[model]?.[d], model), 0),
       agg: dates.reduce((agg, d) => {
@@ -563,7 +665,13 @@ function renderModelView() {
     type: 'bar',
     data: {
       labels: sorted.map(x => x.model),
-      datasets: [{ data: sorted.map(x => x.total), backgroundColor: sorted.map(x => x.color), borderWidth: 0, borderRadius: 4 }],
+      datasets: [{
+        data: sorted.map(x => x.total),
+        backgroundColor: sorted.map(x => x.color),
+        borderWidth: 0,
+        borderRadius: 4,
+        maxBarThickness: 30,
+      }],
     },
     options: {
       indexAxis: 'y',
@@ -571,11 +679,15 @@ function renderModelView() {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } },
+        tooltip: tooltipOpts({
+          callbacks: {
+            label: c => ` ${fmt(c.raw)} tokens  (${fmtUSD(sorted[c.dataIndex].cost)} at API rates)`,
+          },
+        }),
       },
       scales: {
-        x: { ticks: { callback: v => fmt(v) } },
-        y: { grid: { display: false } },
+        x: { ...yAxis(), grid: { color: theme().grid, drawTicks: false } },
+        y: { ...xAxis(), ticks: { font: baseFont(), color: theme().ink2 } },
       },
       onClick: (e, els) => {
         if (!els.length) return;
@@ -626,44 +738,129 @@ function renderModelView() {
   renderRatesNote();
 }
 
+// ---- View: By Date (stacked bar per day, stacked by model) ----
+
+function renderTimeline() {
+  document.getElementById('chart-title').textContent = 'Daily token usage';
+  document.getElementById('chart-hint').textContent  = 'Click any bar to see the model breakdown for that day.';
+
+  const { dates, byDate } = summary;
+  const models_sorted = summary.modelsBySlot;
+  const t = theme();
+
+  const datasets = models_sorted.map(model => ({
+    label: model,
+    data: dates.map(date => sumRecord(byDate[date]?.[model])),
+    backgroundColor: modelColor(model),
+    borderColor: t.surface,
+    borderWidth: 1,
+    barPercentage: 0.72,
+    categoryPercentage: 0.86,
+  }));
+
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: dates.map(fmtDate), datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: legendOpts(),
+        tooltip: tooltipOpts({
+          callbacks: {
+            label: c => ` ${c.dataset.label}: ${fmt(c.raw)}`,
+            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
+          },
+        }),
+      },
+      scales: {
+        x: { ...xAxis(), stacked: true },
+        y: { ...yAxis(), stacked: true },
+      },
+      onClick: (e, els) => {
+        if (!els.length) return;
+        drill = { type: 'date', value: dates[els[0].index] };
+        updateNav();
+        renderView();
+      },
+    },
+  });
+
+  // Table: date rows, model columns
+  document.getElementById('thead').innerHTML =
+    `<th>Date</th>${models_sorted.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th><th class="num">Est. Cost</th>`;
+
+  const rows = [...dates].reverse().map(date => {
+    const dayTotal = models_sorted.reduce((s, m) => s + sumRecord(byDate[date]?.[m]), 0);
+    const dayCost  = models_sorted.reduce((s, m) => s + costOf(byDate[date]?.[m], m), 0);
+    return `<tr>
+      <td>${fmtDate(date)}</td>
+      ${models_sorted.map(m => `<td class="num">${fmt(sumRecord(byDate[date]?.[m]))}</td>`).join('')}
+      <td class="bold">${fmt(dayTotal)}</td>
+      <td class="bold">${fmtUSD(dayCost)}</td>
+    </tr>`;
+  }).join('');
+
+  const grandTotal = dates.reduce((s, d) => s + models_sorted.reduce((acc, m) => acc + sumRecord(byDate[d]?.[m]), 0), 0);
+  const grandCost  = dates.reduce((s, d) => s + models_sorted.reduce((acc, m) => acc + costOf(byDate[d]?.[m], m), 0), 0);
+  const totalRow = `<tr class="total-row">
+    <td>Total</td>
+    ${models_sorted.map(m => `<td class="num">${fmt(dates.reduce((s, d) => s + sumRecord(byDate[d]?.[m]), 0))}</td>`).join('')}
+    <td class="num">${fmt(grandTotal)}</td>
+    <td class="num">${fmtUSD(grandCost)}</td>
+  </tr>`;
+
+  document.getElementById('tbody').innerHTML = rows + totalRow;
+  renderRatesNote();
+}
+
 // ---- Drilldown: single date -> model breakdown ----
 
 function renderDateDrill(date) {
   document.getElementById('chart-title').textContent = `Model breakdown: ${fmtDate(date)}`;
   document.getElementById('chart-hint').textContent  = '';
 
-  const { models, byDate } = summary;
+  const { byDate } = summary;
   const dayData = byDate[date] || {};
-  const active  = models.filter(m => dayData[m]);
-  const totals  = active.map(m => sumRecord(dayData[m]));
-  const dayTotal = totals.reduce((s, v) => s + v, 0);
+  const active = summary.modelsBySlot
+    .filter(m => dayData[m])
+    .map(m => ({ model: m, total: sumRecord(dayData[m]), cost: costOf(dayData[m], m) }))
+    .sort((a, b) => b.total - a.total);
+  const dayTotal = active.reduce((s, x) => s + x.total, 0);
+  const dayCost  = active.reduce((s, x) => s + x.cost, 0);
 
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
-    type: 'doughnut',
+    type: 'bar',
     data: {
-      labels: active,
+      labels: active.map(x => x.model),
       datasets: [{
-        data: totals,
-        backgroundColor: active.map(m => modelColor(m)),
-        borderWidth: 2,
-        borderColor: '#fff',
-        hoverOffset: 8,
+        data: active.map(x => x.total),
+        backgroundColor: active.map(x => modelColor(x.model)),
+        borderWidth: 0,
+        borderRadius: 4,
+        maxBarThickness: 30,
       }],
     },
     options: {
+      indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right', labels: { font: { size: 12 }, boxWidth: 12 } },
-        tooltip: {
+        legend: { display: false },
+        tooltip: tooltipOpts({
           callbacks: {
-            label: ctx => {
-              const pct = dayTotal > 0 ? ((ctx.raw / dayTotal) * 100).toFixed(1) : '0';
-              return `${ctx.label}: ${fmt(ctx.raw)} (${pct}%)`;
+            label: c => {
+              const pct = dayTotal > 0 ? ((c.raw / dayTotal) * 100).toFixed(1) : '0';
+              return ` ${fmt(c.raw)} tokens  (${pct}% of day)`;
             },
           },
-        },
+        }),
+      },
+      scales: {
+        x: { ...yAxis(), grid: { color: theme().grid, drawTicks: false } },
+        y: { ...xAxis(), ticks: { font: baseFont(), color: theme().ink2 } },
       },
     },
   });
@@ -671,29 +868,27 @@ function renderDateDrill(date) {
   document.getElementById('thead').innerHTML =
     `<th>Model</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th><th class="num">Est. Cost</th><th class="num">Share</th>`;
 
-  const dayCost = active.reduce((s, m) => s + costOf(dayData[m], m), 0);
-  const rows = active.map(model => {
-    const r = dayData[model];
-    const t = sumRecord(r);
-    const pct = dayTotal > 0 ? ((t / dayTotal) * 100).toFixed(1) + '%' : '0%';
+  const rows = active.map(x => {
+    const r = dayData[x.model];
+    const pct = dayTotal > 0 ? ((x.total / dayTotal) * 100).toFixed(1) + '%' : '0%';
     return `<tr>
-      <td><div class="model-cell"><span class="dot" style="background:${modelColor(model)}"></span>${model}</div></td>
+      <td><div class="model-cell"><span class="dot" style="background:${modelColor(x.model)}"></span>${x.model}</div></td>
       <td class="num">${fmt(r.input)}</td>
       <td class="num">${fmt(r.cacheRead)}</td>
       <td class="num">${fmt(r.cacheCreate)}</td>
       <td class="num">${fmt(r.output)}</td>
-      <td class="bold">${fmt(t)}</td>
-      <td class="bold">${fmtUSD(costOf(r, model))}</td>
+      <td class="bold">${fmt(x.total)}</td>
+      <td class="bold">${fmtUSD(x.cost)}</td>
       <td class="num">${pct}</td>
     </tr>`;
   }).join('');
 
   const totalRow = `<tr class="total-row">
     <td>Total</td>
-    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].input || 0), 0))}</td>
-    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].cacheRead || 0), 0))}</td>
-    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].cacheCreate || 0), 0))}</td>
-    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].output || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, x) => s + (dayData[x.model].input || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, x) => s + (dayData[x.model].cacheRead || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, x) => s + (dayData[x.model].cacheCreate || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, x) => s + (dayData[x.model].output || 0), 0))}</td>
     <td class="num">${fmt(dayTotal)}</td>
     <td class="num">${fmtUSD(dayCost)}</td>
     <td class="num">100%</td>
@@ -711,34 +906,37 @@ function renderModelDrill(model) {
 
   const { dates, byModel } = summary;
   const mData = byModel[model] || {};
+  const tc = tokenColors();
+  const t = theme();
 
+  const seg = { borderColor: t.surface, borderWidth: 1, barPercentage: 0.72, categoryPercentage: 0.86 };
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: dates.map(fmtDate),
       datasets: [
-        { label: 'Input',        data: dates.map(d => mData[d]?.input       || 0), backgroundColor: TOKEN_COLORS.input,       borderWidth: 0 },
-        { label: 'Cache Read',   data: dates.map(d => mData[d]?.cacheRead   || 0), backgroundColor: TOKEN_COLORS.cacheRead,   borderWidth: 0 },
-        { label: 'Cache Create', data: dates.map(d => mData[d]?.cacheCreate || 0), backgroundColor: TOKEN_COLORS.cacheCreate, borderWidth: 0 },
-        { label: 'Output',       data: dates.map(d => mData[d]?.output      || 0), backgroundColor: TOKEN_COLORS.output,      borderWidth: 0 },
+        { label: 'Input',        data: dates.map(d => mData[d]?.input       || 0), backgroundColor: tc.input,       ...seg },
+        { label: 'Cache Read',   data: dates.map(d => mData[d]?.cacheRead   || 0), backgroundColor: tc.cacheRead,   ...seg },
+        { label: 'Cache Create', data: dates.map(d => mData[d]?.cacheCreate || 0), backgroundColor: tc.cacheCreate, ...seg },
+        { label: 'Output',       data: dates.map(d => mData[d]?.output      || 0), backgroundColor: tc.output,      ...seg },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'top', labels: { font: { size: 12 }, boxWidth: 12 } },
-        tooltip: {
+        legend: legendOpts(),
+        tooltip: tooltipOpts({
           callbacks: {
-            label: ctx => `${ctx.dataset.label}: ${fmt(ctx.raw)}`,
+            label: c => ` ${c.dataset.label}: ${fmt(c.raw)}`,
             footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
           },
-        },
+        }),
       },
       scales: {
-        x: { stacked: true, grid: { display: false } },
-        y: { stacked: true, ticks: { callback: v => fmt(v) } },
+        x: { ...xAxis(), stacked: true },
+        y: { ...yAxis(), stacked: true },
       },
     },
   });
@@ -761,22 +959,22 @@ function renderModelDrill(model) {
     </tr>`;
   }).join('');
 
-  const t = activeDates.reduce((agg, d) => {
+  const agg = activeDates.reduce((a, d) => {
     const r = mData[d];
-    agg.input += r.input || 0; agg.cacheRead += r.cacheRead || 0;
-    agg.cacheCreate += r.cacheCreate || 0; agg.output += r.output || 0;
-    agg.total += sumRecord(r); agg.cost += costOf(r, model);
-    return agg;
+    a.input += r.input || 0; a.cacheRead += r.cacheRead || 0;
+    a.cacheCreate += r.cacheCreate || 0; a.output += r.output || 0;
+    a.total += sumRecord(r); a.cost += costOf(r, model);
+    return a;
   }, { input: 0, cacheRead: 0, cacheCreate: 0, output: 0, total: 0, cost: 0 });
 
   const totalRow = `<tr class="total-row">
     <td>Total</td>
-    <td class="num">${fmt(t.input)}</td>
-    <td class="num">${fmt(t.cacheRead)}</td>
-    <td class="num">${fmt(t.cacheCreate)}</td>
-    <td class="num">${fmt(t.output)}</td>
-    <td class="num">${fmt(t.total)}</td>
-    <td class="num">${fmtUSD(t.cost)}</td>
+    <td class="num">${fmt(agg.input)}</td>
+    <td class="num">${fmt(agg.cacheRead)}</td>
+    <td class="num">${fmt(agg.cacheCreate)}</td>
+    <td class="num">${fmt(agg.output)}</td>
+    <td class="num">${fmt(agg.total)}</td>
+    <td class="num">${fmtUSD(agg.cost)}</td>
   </tr>`;
 
   document.getElementById('tbody').innerHTML = rows + totalRow;
@@ -901,6 +1099,10 @@ function init() {
     updateNav();
     renderView();
   });
+
+  // Re-render charts when the OS theme flips, so chart ink/grid/series
+  // colors follow the CSS variables.
+  darkQuery.addEventListener('change', () => { if (summary) renderView(); });
 
   loadSource();
 }

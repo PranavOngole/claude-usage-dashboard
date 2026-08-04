@@ -1,18 +1,10 @@
 #!/bin/bash
-# Rebuild data/subscription_usage.json from local Claude Code transcripts
-# and push it so GitHub Pages picks it up. Run manually or via launchd
-# (com.pranav.claude-usage-refresh).
+# Stable entry point for launchd and the Desktop shortcut. Pulls the repo
+# first, then execs the inner script so this run always executes the
+# freshly pulled version (bash reads scripts lazily; pulling a new version
+# of the currently running file mid-run executes garbage, so this wrapper
+# must stay tiny and unchanging).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
 git pull --rebase --quiet origin main
-python3 scripts/build_subscription_usage.py
-
-if git diff --quiet -- data/subscription_usage.json; then
-  echo "No changes to commit"
-  exit 0
-fi
-
-git add data/subscription_usage.json
-git commit -m "chore: update Claude Code usage data $(date +%Y-%m-%d)"
-git push origin main
+exec bash scripts/refresh_inner.sh

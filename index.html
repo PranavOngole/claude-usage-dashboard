@@ -308,6 +308,7 @@
     <div class="header-right">
       <div class="source-tabs" id="source-tabs">
         <button data-source="subscription" class="active">Claude Code</button>
+        <button data-source="claudeai">claude.ai</button>
         <button data-source="api">API</button>
       </div>
       <button class="refresh-btn" id="refresh-btn" title="Reload the latest published data" aria-label="Refresh data">
@@ -373,8 +374,8 @@ const MODEL_SLOTS = [
   ['claude-sonnet-5',  3],
   ['claude-sonnet-4-6',4],
   ['claude-haiku-4-5', 5],
-  ['claude-opus-4',    6],
-  ['claude-sonnet-4',  7],
+  ['claude-ai-chat',   6],
+  ['claude-opus-4',    7],
 ];
 
 // Token-type colors: the three input kinds as one blue ramp, output as the
@@ -406,6 +407,7 @@ const PRICING = [
   ['claude-sonnet-5',   3, 15],
   ['claude-sonnet-4',   3, 15],
   ['claude-haiku-4-5',  1,  5],
+  ['claude-ai-chat',    3, 15],  // estimated chat volume, assumed Sonnet rates
 ];
 
 function priceFor(model) {
@@ -444,6 +446,19 @@ const SOURCES = {
         This view reads <code>data/subscription_usage.json</code>, built from your local
         Claude Code session transcripts. Run <code>scripts/refresh_subscription.sh</code>
         on your Mac to generate and push it.
+      </p>`,
+  },
+  claudeai: {
+    file: 'data/claudeai_usage.json',
+    label: 'claude.ai',
+    emptyHtml: `
+      <h2>No claude.ai data yet</h2>
+      <p>
+        Anthropic has no usage API for claude.ai chats, so this view is estimated from
+        your official data export. To feed it: on claude.ai go to
+        <strong>Settings &rsaquo; Privacy &rsaquo; Export data</strong>, download the zip
+        from the email into <code>~/Downloads</code>, then double-click
+        <code>Refresh Claude Usage</code> on your Desktop.
       </p>`,
   },
   api: {
@@ -1023,7 +1038,10 @@ function renderRatesNote() {
   });
   note.innerHTML =
     `Est. cost at standard API list prices per 1M tokens (${used.join(' &middot; ')}). ` +
-    `Cache reads bill at 10% of the input rate; cache writes at 1.25x (5-min TTL) or 2x (1-hour TTL).`;
+    `Cache reads bill at 10% of the input rate; cache writes at 1.25x (5-min TTL) or 2x (1-hour TTL).` +
+    (summary.models.includes('claude-ai-chat')
+      ? ` claude-ai-chat is chat volume estimated from your claude.ai export (~4 chars/token, context replayed with cache assumptions), priced at assumed Sonnet rates; thinking tokens, system prompts, and attachments are not included, so treat it as a floor.`
+      : '');
 }
 
 // ---- Navigation state ----
@@ -1086,9 +1104,13 @@ async function loadSource() {
   summary = parseData(raw);
   showContent();
 
-  document.getElementById('updated').textContent = raw.fetched_at
+  let updatedText = raw.fetched_at
     ? `${SOURCES[source].label} usage. Last updated: ${new Date(raw.fetched_at).toLocaleString()}`
     : `${SOURCES[source].label} usage`;
+  if (raw.estimated) {
+    updatedText += ` (estimated from ${raw.export_name || 'chat export'})`;
+  }
+  document.getElementById('updated').textContent = updatedText;
 
   renderStats(raw);
   updateNav();

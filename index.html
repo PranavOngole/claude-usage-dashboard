@@ -1157,6 +1157,16 @@ async function loadSource() {
 
   summary = parseData(raw);
   lastFetchedAt = raw.fetched_at || null;
+
+  // A single-model source (the claude.ai export carries no model field,
+  // so everything folds into one pseudo-model) makes the By Model view a
+  // lone bar; open those sources on the daily trend instead.
+  if (summary.models.length < 2 && view === 'models' && !drill) {
+    view = 'timeline';
+    document.querySelectorAll('#tabs button').forEach(b =>
+      b.classList.toggle('active', b.dataset.view === view));
+  }
+
   showContent();
 
   let updatedText = raw.fetched_at

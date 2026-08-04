@@ -311,7 +311,7 @@
         <button data-source="claudeai">claude.ai</button>
         <button data-source="api">API</button>
       </div>
-      <button class="refresh-btn" id="refresh-btn" title="Reload the latest published data" aria-label="Refresh data">
+      <button class="refresh-btn" id="refresh-btn" title="On this Mac: rebuild the data and republish. Elsewhere: reload the latest published data" aria-label="Refresh data">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
           <polyline points="21 3 21 9 15 9"/>
@@ -482,6 +482,7 @@ let summary = null;
 let source = 'subscription';
 let view = 'models';
 let drill = null;
+let lastFetchedAt = null;
 
 // ---- Utilities ----
 
@@ -1080,6 +1081,59 @@ function showContent() {
   document.getElementById('controls').style.display = 'flex';
 }
 
+// ---- Local one-click rebuild ----
+
+// A tiny launchd service on Pranav's Mac (scripts/refresh_server.py,
+// label com.pranav.claude-usage-refresh-server) rebuilds the data files
+// and pushes them when the page asks. Loopback is unreachable from any
+// other device, so elsewhere the refresh button degrades to a re-fetch.
+const LOCAL_HELPER = 'http://127.0.0.1:8377';
+
+function setStatus(text) {
+  document.getElementById('updated').textContent = text;
+}
+
+async function fetchTimeout(url, ms, opts = {}) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctl.signal }); }
+  finally { clearTimeout(t); }
+}
+
+// Returns true unless the helper was reachable but the rebuild failed.
+async function rebuildViaHelper() {
+  // The API view is fed by a GitHub Action, not local files; nothing to
+  // rebuild on this Mac.
+  if (source === 'api') return true;
+
+  try {
+    const ping = await fetchTimeout(`${LOCAL_HELPER}/ping`, 1500);
+    if (!ping.ok) return true;
+  } catch { return true; }
+
+  setStatus('Rebuilding data on this Mac…');
+  const before = lastFetchedAt;
+  let resp;
+  try {
+    resp = await fetchTimeout(`${LOCAL_HELPER}/refresh`, 300000, { method: 'POST' });
+  } catch { return false; }
+  if (!resp.ok) return false;
+
+  // The push is done; now wait for GitHub Pages to serve the new file.
+  setStatus('Rebuilt. Waiting for GitHub Pages to publish (about a minute)…');
+  for (let i = 0; i < 24; i++) {
+    await new Promise(r => setTimeout(r, 8000));
+    try {
+      const check = await fetch(`${SOURCES[source].file}?t=${Date.now()}`);
+      if (check.ok) {
+        const fresh = await check.json();
+        if (fresh.fetched_at && fresh.fetched_at !== before) return true;
+      }
+    } catch {}
+  }
+  return true; // publish is just slow; show whatever is live now
+}
+
 // ---- Data loading ----
 
 async function loadSource() {
@@ -1102,6 +1156,7 @@ async function loadSource() {
   }
 
   summary = parseData(raw);
+  lastFetchedAt = raw.fetched_at || null;
   showContent();
 
   let updatedText = raw.fetched_at
@@ -1150,13 +1205,23 @@ function init() {
     renderView();
   });
 
-  // Refresh button: re-fetch the current source and re-render
+  // Refresh button: if the local helper is reachable (viewing on the Mac
+  // that owns the transcripts), rebuild + push the data and wait for
+  // GitHub Pages to publish it; otherwise just re-fetch published data.
   document.getElementById('refresh-btn').addEventListener('click', async e => {
     const btn = e.currentTarget;
     if (btn.classList.contains('spinning')) return;
     btn.classList.add('spinning');
     const started = Date.now();
+    let rebuildFailed = false;
+    try {
+      rebuildFailed = !(await rebuildViaHelper());
+    } catch { rebuildFailed = true; }
     await loadSource();
+    if (rebuildFailed) {
+      document.getElementById('updated').textContent +=
+        ' (local rebuild failed; showing last published data)';
+    }
     // Keep the spin visible long enough to register as feedback
     setTimeout(() => btn.classList.remove('spinning'), Math.max(0, 600 - (Date.now() - started)));
   });

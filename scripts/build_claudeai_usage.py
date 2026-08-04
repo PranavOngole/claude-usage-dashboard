@@ -22,11 +22,10 @@ import json
 import sys
 import zipfile
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "data" / "claudeai_usage.json"
-MAX_DAYS = 90
 CHARS_PER_TOKEN = 4
 
 # Model slugs in the export that map onto published API pricing keep their
@@ -95,7 +94,6 @@ def main():
         return
 
     conversations = load_conversations(export)
-    cutoff = (datetime.now().astimezone() - timedelta(days=MAX_DAYS)).date()
     days = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     counted = 0
 
@@ -113,7 +111,7 @@ def main():
                 continue
 
             when = parse_when(msg.get("created_at"))
-            if when and when.date() >= cutoff:
+            if when:
                 bucket = days[when.date().isoformat()][model]
                 bucket["cache_read"] += cached_context
                 bucket["cache_write"] += pending_new

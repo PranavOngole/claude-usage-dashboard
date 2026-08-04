@@ -195,6 +195,10 @@
       <h1>Claude Token Usage</h1>
       <div class="updated" id="updated">Loading...</div>
     </div>
+    <div class="tab-group" id="source-tabs">
+      <button data-source="subscription" class="active">Claude Code</button>
+      <button data-source="api">API</button>
+    </div>
   </div>
 </div>
 
@@ -217,17 +221,7 @@
 
   <div class="card" id="chart-card">
     <div id="empty-state" style="display:none">
-      <div class="empty">
-        <h2>No usage data yet</h2>
-        <p>
-          This dashboard reads from <code>data/usage.json</code>, which is updated daily
-          by the GitHub Actions workflow. Trigger the workflow manually to populate it now.
-        </p>
-        <p style="margin-top:12px">
-          Note: this requires an <strong>Admin API key</strong> (<code>sk-ant-admin01-...</code>)
-          and an Anthropic Organization account.
-        </p>
-      </div>
+      <div class="empty" id="empty-body"></div>
     </div>
     <div id="chart-content">
       <div class="card-title" id="chart-title"></div>
@@ -264,8 +258,37 @@ const TOKEN_COLORS = {
 
 // ---- State ----
 
+const SOURCES = {
+  subscription: {
+    file: 'data/subscription_usage.json',
+    label: 'Claude Code',
+    emptyHtml: `
+      <h2>No Claude Code data yet</h2>
+      <p>
+        This view reads <code>data/subscription_usage.json</code>, built from your local
+        Claude Code session transcripts. Run <code>scripts/refresh_subscription.sh</code>
+        on your Mac to generate and push it.
+      </p>`,
+  },
+  api: {
+    file: 'data/usage.json',
+    label: 'API',
+    emptyHtml: `
+      <h2>No API usage data yet</h2>
+      <p>
+        This view reads <code>data/usage.json</code>, which is updated daily
+        by the GitHub Actions workflow. Trigger the workflow manually to populate it now.
+      </p>
+      <p style="margin-top:12px">
+        Note: this requires an <strong>Admin API key</strong> (<code>sk-ant-admin01-...</code>)
+        set as the <code>ANTHROPIC_ADMIN_KEY</code> repo secret.
+      </p>`,
+  },
+};
+
 let chart = null;
 let summary = null;
+let source = 'subscription';
 let view = 'timeline';
 let drill = null;
 
@@ -640,18 +663,29 @@ function updateNav() {
 // ---- Empty state ----
 
 function showEmpty() {
+  document.getElementById('empty-body').innerHTML = SOURCES[source].emptyHtml;
   document.getElementById('empty-state').style.display = 'block';
   document.getElementById('chart-content').style.display = 'none';
   document.getElementById('table-card').style.display = 'none';
-  document.getElementById('updated').textContent = 'No data';
+  document.getElementById('stats').innerHTML = '';
+  document.getElementById('controls').style.display = 'none';
+  document.getElementById('updated').textContent = `${SOURCES[source].label}: no data`;
 }
 
-// ---- Init ----
+function showContent() {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('chart-content').style.display = 'block';
+  document.getElementById('table-card').style.display = 'block';
+  document.getElementById('controls').style.display = 'flex';
+}
 
-async function init() {
+// ---- Data loading ----
+
+async function loadSource() {
+  destroyChart();
   let raw;
   try {
-    const resp = await fetch('data/usage.json');
+    const resp = await fetch(SOURCES[source].file);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     raw = await resp.json();
   } catch (e) {
@@ -665,13 +699,30 @@ async function init() {
   }
 
   summary = parseData(raw);
+  showContent();
 
   document.getElementById('updated').textContent = raw.fetched_at
-    ? `Last updated: ${new Date(raw.fetched_at).toLocaleString()}`
-    : '';
+    ? `${SOURCES[source].label} usage. Last updated: ${new Date(raw.fetched_at).toLocaleString()}`
+    : `${SOURCES[source].label} usage`;
 
   renderStats(raw);
+  updateNav();
   renderView();
+}
+
+// ---- Init ----
+
+function init() {
+  // Source switching (Claude Code vs API)
+  document.getElementById('source-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-source]');
+    if (!btn || btn.dataset.source === source) return;
+    source = btn.dataset.source;
+    drill = null;
+    document.querySelectorAll('#source-tabs button').forEach(b =>
+      b.classList.toggle('active', b.dataset.source === source));
+    loadSource();
+  });
 
   // Tab switching
   document.getElementById('tabs').addEventListener('click', e => {
@@ -691,6 +742,8 @@ async function init() {
     updateNav();
     renderView();
   });
+
+  loadSource();
 }
 
 init();

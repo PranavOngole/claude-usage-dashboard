@@ -174,6 +174,19 @@
     }
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover td { background: #f8fafc; }
+    tr.total-row td {
+      font-weight: 700;
+      color: #0f172a;
+      background: #f8fafc;
+      border-top: 2px solid #e2e8f0;
+    }
+    tr.total-row:hover td { background: #f8fafc; }
+    .rates-note {
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 10px 14px 4px;
+      line-height: 1.6;
+    }
     td.num { text-align: right; font-variant-numeric: tabular-nums; color: #475569; }
     td.bold { text-align: right; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
     .model-cell { display: flex; align-items: center; gap: 8px; }
@@ -255,6 +268,46 @@ const TOKEN_COLORS = {
   cacheCreate: '#a855f7',
   output:      '#f97316',
 };
+
+// API list prices in $ per million tokens: [model prefix, input, output].
+// Longest/most specific prefixes first. Cache reads bill at 10% of the
+// input rate; cache writes at 1.25x (5-minute TTL) or 2x (1-hour TTL).
+const PRICING = [
+  ['claude-fable-5',   10, 50],
+  ['claude-mythos',    10, 50],
+  ['claude-opus-5',     5, 25],
+  ['claude-opus-4-8',   5, 25],
+  ['claude-opus-4-7',   5, 25],
+  ['claude-opus-4-6',   5, 25],
+  ['claude-opus-4-5',   5, 25],
+  ['claude-sonnet-5',   3, 15],
+  ['claude-sonnet-4',   3, 15],
+  ['claude-haiku-4-5',  1,  5],
+];
+
+function priceFor(model) {
+  for (const [prefix, inp, out] of PRICING) {
+    if (model.startsWith(prefix)) return { inp, out };
+  }
+  return null;
+}
+
+function costOf(record, model) {
+  if (!record) return 0;
+  const p = priceFor(model);
+  if (!p) return 0;
+  return (
+    (record.input     || 0) * p.inp +
+    (record.cacheRead || 0) * p.inp * 0.1 +
+    (record.cc5m      || 0) * p.inp * 1.25 +
+    (record.cc1h      || 0) * p.inp * 2 +
+    (record.output    || 0) * p.out
+  ) / 1e6;
+}
+
+function fmtUSD(n) {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+}
 
 // ---- State ----
 
@@ -338,6 +391,8 @@ function parseData(raw) {
         input:       r.uncached_input_tokens || 0,
         cacheRead:   r.cache_read_input_tokens || 0,
         cacheCreate: (cc.ephemeral_1h_input_tokens || 0) + (cc.ephemeral_5m_input_tokens || 0),
+        cc5m:        cc.ephemeral_5m_input_tokens || 0,
+        cc1h:        cc.ephemeral_1h_input_tokens || 0,
         output:      r.output_tokens || 0,
       };
 
@@ -372,10 +427,17 @@ function renderStats(raw) {
       totalAll += inp + out;
     }
   }
+  let totalCost = 0;
+  for (const date of summary.dates) {
+    for (const model of summary.models) {
+      totalCost += costOf(summary.byDate[date]?.[model], model);
+    }
+  }
   document.getElementById('stats').innerHTML = `
     <div class="stat"><div class="label">Total Tokens</div><div class="val">${fmt(totalAll)}</div></div>
     <div class="stat"><div class="label">Input</div><div class="val">${fmt(totalIn)}</div></div>
     <div class="stat"><div class="label">Output</div><div class="val">${fmt(totalOut)}</div></div>
+    <div class="stat"><div class="label">Est. API Cost</div><div class="val">${fmtUSD(totalCost)}</div></div>
     <div class="stat"><div class="label">Models</div><div class="val">${summary.models.length}</div></div>
     <div class="stat"><div class="label">Days</div><div class="val">${summary.dates.length}</div></div>
   `;
@@ -445,16 +507,30 @@ function renderTimeline() {
   // Table: date rows, model columns
   const models_sorted = [...models];
   document.getElementById('thead').innerHTML =
-    `<th>Date</th>${models_sorted.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th>`;
+    `<th>Date</th>${models_sorted.map(m => `<th class="num">${m}</th>`).join('')}<th class="num">Total</th><th class="num">Est. Cost</th>`;
 
-  document.getElementById('tbody').innerHTML = [...dates].reverse().map(date => {
+  const rows = [...dates].reverse().map(date => {
     const dayTotal = models_sorted.reduce((s, m) => s + sumRecord(byDate[date]?.[m]), 0);
+    const dayCost  = models_sorted.reduce((s, m) => s + costOf(byDate[date]?.[m], m), 0);
     return `<tr>
       <td>${fmtDate(date)}</td>
       ${models_sorted.map(m => `<td class="num">${fmt(sumRecord(byDate[date]?.[m]))}</td>`).join('')}
       <td class="bold">${fmt(dayTotal)}</td>
+      <td class="bold">${fmtUSD(dayCost)}</td>
     </tr>`;
   }).join('');
+
+  const grandTotal = dates.reduce((s, d) => s + models_sorted.reduce((t, m) => t + sumRecord(byDate[d]?.[m]), 0), 0);
+  const grandCost  = dates.reduce((s, d) => s + models_sorted.reduce((t, m) => t + costOf(byDate[d]?.[m], m), 0), 0);
+  const totalRow = `<tr class="total-row">
+    <td>Total</td>
+    ${models_sorted.map(m => `<td class="num">${fmt(dates.reduce((s, d) => s + sumRecord(byDate[d]?.[m]), 0))}</td>`).join('')}
+    <td class="num">${fmt(grandTotal)}</td>
+    <td class="num">${fmtUSD(grandCost)}</td>
+  </tr>`;
+
+  document.getElementById('tbody').innerHTML = rows + totalRow;
+  renderRatesNote();
 }
 
 // ---- View: By Model (horizontal bar, total per model) ----
@@ -470,6 +546,7 @@ function renderModelView() {
       model,
       color: MODEL_COLORS[i % MODEL_COLORS.length],
       total: dates.reduce((s, d) => s + sumRecord(byModel[model]?.[d]), 0),
+      cost:  dates.reduce((s, d) => s + costOf(byModel[model]?.[d], model), 0),
       agg: dates.reduce((agg, d) => {
         const r = byModel[model]?.[d] || {};
         agg.input       += r.input       || 0;
@@ -511,17 +588,42 @@ function renderModelView() {
 
   // Table
   document.getElementById('thead').innerHTML =
-    `<th>Model</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th>`;
+    `<th>Model</th><th class="num">Rate In/Out ($/M)</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th><th class="num">Est. Cost</th>`;
 
-  document.getElementById('tbody').innerHTML = sorted.map(x => `
-    <tr>
+  const rows = sorted.map(x => {
+    const p = priceFor(x.model);
+    const rate = p ? `$${p.inp} / $${p.out}` : 'n/a';
+    return `<tr>
       <td><div class="model-cell"><span class="dot" style="background:${x.color}"></span>${x.model}</div></td>
+      <td class="num">${rate}</td>
       <td class="num">${fmt(x.agg.input)}</td>
       <td class="num">${fmt(x.agg.cacheRead)}</td>
       <td class="num">${fmt(x.agg.cacheCreate)}</td>
       <td class="num">${fmt(x.agg.output)}</td>
       <td class="bold">${fmt(x.total)}</td>
-    </tr>`).join('');
+      <td class="bold">${fmtUSD(x.cost)}</td>
+    </tr>`;
+  }).join('');
+
+  const t = sorted.reduce((agg, x) => {
+    agg.input += x.agg.input; agg.cacheRead += x.agg.cacheRead;
+    agg.cacheCreate += x.agg.cacheCreate; agg.output += x.agg.output;
+    agg.total += x.total; agg.cost += x.cost;
+    return agg;
+  }, { input: 0, cacheRead: 0, cacheCreate: 0, output: 0, total: 0, cost: 0 });
+
+  const totalRow = `<tr class="total-row">
+    <td>Total</td><td></td>
+    <td class="num">${fmt(t.input)}</td>
+    <td class="num">${fmt(t.cacheRead)}</td>
+    <td class="num">${fmt(t.cacheCreate)}</td>
+    <td class="num">${fmt(t.output)}</td>
+    <td class="num">${fmt(t.total)}</td>
+    <td class="num">${fmtUSD(t.cost)}</td>
+  </tr>`;
+
+  document.getElementById('tbody').innerHTML = rows + totalRow;
+  renderRatesNote();
 }
 
 // ---- Drilldown: single date -> model breakdown ----
@@ -567,9 +669,10 @@ function renderDateDrill(date) {
   });
 
   document.getElementById('thead').innerHTML =
-    `<th>Model</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th><th class="num">Share</th>`;
+    `<th>Model</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th><th class="num">Est. Cost</th><th class="num">Share</th>`;
 
-  document.getElementById('tbody').innerHTML = active.map(model => {
+  const dayCost = active.reduce((s, m) => s + costOf(dayData[m], m), 0);
+  const rows = active.map(model => {
     const r = dayData[model];
     const t = sumRecord(r);
     const pct = dayTotal > 0 ? ((t / dayTotal) * 100).toFixed(1) + '%' : '0%';
@@ -580,9 +683,24 @@ function renderDateDrill(date) {
       <td class="num">${fmt(r.cacheCreate)}</td>
       <td class="num">${fmt(r.output)}</td>
       <td class="bold">${fmt(t)}</td>
+      <td class="bold">${fmtUSD(costOf(r, model))}</td>
       <td class="num">${pct}</td>
     </tr>`;
   }).join('');
+
+  const totalRow = `<tr class="total-row">
+    <td>Total</td>
+    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].input || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].cacheRead || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].cacheCreate || 0), 0))}</td>
+    <td class="num">${fmt(active.reduce((s, m) => s + (dayData[m].output || 0), 0))}</td>
+    <td class="num">${fmt(dayTotal)}</td>
+    <td class="num">${fmtUSD(dayCost)}</td>
+    <td class="num">100%</td>
+  </tr>`;
+
+  document.getElementById('tbody').innerHTML = rows + totalRow;
+  renderRatesNote();
 }
 
 // ---- Drilldown: single model -> daily trend ----
@@ -628,9 +746,9 @@ function renderModelDrill(model) {
   const activeDates = dates.filter(d => mData[d]);
 
   document.getElementById('thead').innerHTML =
-    `<th>Date</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th>`;
+    `<th>Date</th><th class="num">Input</th><th class="num">Cache Read</th><th class="num">Cache Create</th><th class="num">Output</th><th class="num">Total</th><th class="num">Est. Cost</th>`;
 
-  document.getElementById('tbody').innerHTML = [...activeDates].reverse().map(date => {
+  const rows = [...activeDates].reverse().map(date => {
     const r = mData[date];
     return `<tr>
       <td>${fmtDate(date)}</td>
@@ -639,8 +757,49 @@ function renderModelDrill(model) {
       <td class="num">${fmt(r.cacheCreate)}</td>
       <td class="num">${fmt(r.output)}</td>
       <td class="bold">${fmt(sumRecord(r))}</td>
+      <td class="bold">${fmtUSD(costOf(r, model))}</td>
     </tr>`;
   }).join('');
+
+  const t = activeDates.reduce((agg, d) => {
+    const r = mData[d];
+    agg.input += r.input || 0; agg.cacheRead += r.cacheRead || 0;
+    agg.cacheCreate += r.cacheCreate || 0; agg.output += r.output || 0;
+    agg.total += sumRecord(r); agg.cost += costOf(r, model);
+    return agg;
+  }, { input: 0, cacheRead: 0, cacheCreate: 0, output: 0, total: 0, cost: 0 });
+
+  const totalRow = `<tr class="total-row">
+    <td>Total</td>
+    <td class="num">${fmt(t.input)}</td>
+    <td class="num">${fmt(t.cacheRead)}</td>
+    <td class="num">${fmt(t.cacheCreate)}</td>
+    <td class="num">${fmt(t.output)}</td>
+    <td class="num">${fmt(t.total)}</td>
+    <td class="num">${fmtUSD(t.cost)}</td>
+  </tr>`;
+
+  document.getElementById('tbody').innerHTML = rows + totalRow;
+  renderRatesNote();
+}
+
+// ---- Rates footnote ----
+
+function renderRatesNote() {
+  let note = document.getElementById('rates-note');
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'rates-note';
+    note.className = 'rates-note';
+    document.getElementById('table-card').appendChild(note);
+  }
+  const used = summary.models.map(m => {
+    const p = priceFor(m);
+    return p ? `${m}: $${p.inp} in / $${p.out} out` : `${m}: rate unknown`;
+  });
+  note.innerHTML =
+    `Est. cost at standard API list prices per 1M tokens (${used.join(' &middot; ')}). ` +
+    `Cache reads bill at 10% of the input rate; cache writes at 1.25x (5-min TTL) or 2x (1-hour TTL).`;
 }
 
 // ---- Navigation state ----

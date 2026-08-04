@@ -5,9 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+git pull --rebase --quiet origin main
 python3 scripts/build_subscription_usage.py
 
-git pull --rebase --quiet origin main
 if git diff --quiet -- data/subscription_usage.json; then
   echo "No changes to commit"
   exit 0

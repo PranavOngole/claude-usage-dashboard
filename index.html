@@ -1085,9 +1085,14 @@ function showContent() {
 
 // A tiny launchd service on Pranav's Mac (scripts/refresh_server.py,
 // label com.pranav.claude-usage-refresh-server) rebuilds the data files
-// and pushes them when the page asks. Loopback is unreachable from any
-// other device, so elsewhere the refresh button degrades to a re-fetch.
-const LOCAL_HELPER = 'http://127.0.0.1:8377';
+// and pushes them when the page asks. It also serves this page itself at
+// http://localhost:8377, where everything is same-origin and immune to
+// cross-origin/local-network browser policies; there the data files come
+// straight from disk, so no GitHub Pages wait either. On the public
+// github.io copy, loopback is unreachable from other devices (and may be
+// blocked by browser policy), so the button degrades to a re-fetch.
+const SERVED_LOCALLY = ['localhost:8377', '127.0.0.1:8377'].includes(location.host);
+const LOCAL_HELPER = SERVED_LOCALLY ? '' : 'http://127.0.0.1:8377';
 
 function setStatus(text) {
   document.getElementById('updated').textContent = text;
@@ -1125,6 +1130,10 @@ async function rebuildViaHelper() {
       { method: 'POST', targetAddressSpace: 'loopback' });
   } catch { return 'failed'; }
   if (!resp.ok) return 'failed';
+
+  // Served locally, the data files come straight from disk and are
+  // already fresh the moment the rebuild finishes.
+  if (SERVED_LOCALLY) return 'rebuilt';
 
   // The push is done; now wait for GitHub Pages to serve the new file.
   setStatus('Rebuilt. Waiting for GitHub Pages to publish (about a minute)…');

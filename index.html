@@ -1100,24 +1100,26 @@ async function fetchTimeout(url, ms, opts = {}) {
   finally { clearTimeout(t); }
 }
 
-// Returns true unless the helper was reachable but the rebuild failed.
+// Returns 'rebuilt', 'skipped' (API source has nothing local to rebuild),
+// 'unreachable' (this browser could not reach the helper), or 'failed'
+// (helper reached but the rebuild errored).
 async function rebuildViaHelper() {
   // The API view is fed by a GitHub Action, not local files; nothing to
   // rebuild on this Mac.
-  if (source === 'api') return true;
+  if (source === 'api') return 'skipped';
 
   try {
     const ping = await fetchTimeout(`${LOCAL_HELPER}/ping`, 1500);
-    if (!ping.ok) return true;
-  } catch { return true; }
+    if (!ping.ok) return 'unreachable';
+  } catch { return 'unreachable'; }
 
   setStatus('Rebuilding data on this Mac…');
   const before = lastFetchedAt;
   let resp;
   try {
     resp = await fetchTimeout(`${LOCAL_HELPER}/refresh`, 300000, { method: 'POST' });
-  } catch { return false; }
-  if (!resp.ok) return false;
+  } catch { return 'failed'; }
+  if (!resp.ok) return 'failed';
 
   // The push is done; now wait for GitHub Pages to serve the new file.
   setStatus('Rebuilt. Waiting for GitHub Pages to publish (about a minute)…');
@@ -1127,11 +1129,11 @@ async function rebuildViaHelper() {
       const check = await fetch(`${SOURCES[source].file}?t=${Date.now()}`);
       if (check.ok) {
         const fresh = await check.json();
-        if (fresh.fetched_at && fresh.fetched_at !== before) return true;
+        if (fresh.fetched_at && fresh.fetched_at !== before) return 'rebuilt';
       }
     } catch {}
   }
-  return true; // publish is just slow; show whatever is live now
+  return 'rebuilt'; // publish is just slow; show whatever is live now
 }
 
 // ---- Data loading ----
@@ -1223,15 +1225,16 @@ function init() {
     if (btn.classList.contains('spinning')) return;
     btn.classList.add('spinning');
     const started = Date.now();
-    let rebuildFailed = false;
+    let outcome = 'failed';
     try {
-      rebuildFailed = !(await rebuildViaHelper());
-    } catch { rebuildFailed = true; }
+      outcome = await rebuildViaHelper();
+    } catch { outcome = 'failed'; }
     await loadSource();
-    if (rebuildFailed) {
-      document.getElementById('updated').textContent +=
-        ' (local rebuild failed; showing last published data)';
-    }
+    const note = {
+      unreachable: ' (rebuild helper BLOCKED by this browser; reloaded published data only)',
+      failed: ' (local rebuild failed; showing last published data)',
+    }[outcome];
+    if (note) document.getElementById('updated').textContent += note;
     // Keep the spin visible long enough to register as feedback
     setTimeout(() => btn.classList.remove('spinning'), Math.max(0, 600 - (Date.now() - started)));
   });

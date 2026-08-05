@@ -12,6 +12,7 @@ Kept alive by launchd: com.pranav.claude-usage-refresh-server.
 import json
 import subprocess
 import threading
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -47,11 +48,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self):
+        self._log("preflight")
         self.send_response(204)
         self._cors_headers()
         self.end_headers()
 
     def do_GET(self):
+        self._log("")
         if self.path == "/ping":
             self._send_json(200, {"ok": True})
         else:
@@ -65,6 +68,7 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in ALLOWED_ORIGINS:
             self._send_json(403, {"error": "origin not allowed"})
             return
+        self._log("refresh requested")
         if not refresh_lock.acquire(blocking=False):
             self._send_json(409, {"error": "a refresh is already running"})
             return
@@ -77,8 +81,10 @@ class Handler(BaseHTTPRequestHandler):
             )
             tail = (proc.stdout + proc.stderr)[-2000:]
             if proc.returncode == 0:
+                self._log("refresh ok")
                 self._send_json(200, {"ok": True, "output": tail})
             else:
+                self._log(f"refresh FAILED exit={proc.returncode}")
                 self._send_json(
                     500, {"ok": False, "exit": proc.returncode, "output": tail}
                 )
@@ -88,7 +94,12 @@ class Handler(BaseHTTPRequestHandler):
             refresh_lock.release()
 
     def log_message(self, fmt, *args):
-        pass  # keep the launchd log to real errors only
+        pass  # default per-line noise off; _log below records what matters
+
+    def _log(self, note):
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        origin = self.headers.get("Origin", "-")
+        print(f"{stamp} {self.command} {self.path} origin={origin} {note}", flush=True)
 
 
 if __name__ == "__main__":

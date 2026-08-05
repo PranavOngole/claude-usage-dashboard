@@ -103,7 +103,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path != "/refresh":
+        path, _, query = self.path.partition("?")
+        if path != "/refresh":
             self._send_json(404, {"error": "not found"})
             return
         origin = self.headers.get("Origin")
@@ -116,8 +117,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(409, {"error": "a refresh is already running"})
             return
         try:
+            # mode=local rebuilds the data files in place without the git
+            # commit/push, for the local page's hands-free auto-refresh.
+            if query == "mode=local":
+                cmd = [
+                    "/bin/bash", "-c",
+                    "python3 scripts/build_subscription_usage.py"
+                    " && python3 scripts/build_claudeai_usage.py",
+                ]
+            else:
+                cmd = ["/bin/bash", str(SCRIPT)]
             proc = subprocess.run(
-                ["/bin/bash", str(SCRIPT)],
+                cmd,
+                cwd=str(REPO),
                 capture_output=True,
                 text=True,
                 timeout=300,

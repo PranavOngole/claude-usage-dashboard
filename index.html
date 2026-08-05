@@ -261,6 +261,8 @@
       white-space: nowrap;
     }
     thead th.num { text-align: right; }
+    thead th.sortable { cursor: pointer; user-select: none; }
+    thead th.sortable:hover { color: var(--ink); }
     tbody td {
       padding: 10px 14px;
       border-bottom: 1px solid var(--grid);
@@ -672,9 +674,60 @@ function renderView() {
   destroyChart();
   if (drill) {
     drill.type === 'date' ? renderDateDrill(drill.value) : renderModelDrill(drill.value);
-    return;
+  } else {
+    view === 'models' ? renderModelView() : renderTimeline();
   }
-  view === 'models' ? renderModelView() : renderTimeline();
+  attachTableSort();
+}
+
+// ---- Table sorting ----
+// Every table ends with an Est. Cost column; that's the default sort,
+// descending. Click any header to sort by it; click again to flip.
+
+let tableSort = null;
+
+function cellSortVal(td) {
+  if (td.dataset.sort !== undefined) return td.dataset.sort;
+  const t = td.textContent.trim();
+  const m = t.replace(/^\$/, '').replace(/,/g, '').match(/^(-?\d+(?:\.\d+)?)\s*([KMB])?%?$/);
+  if (m) return parseFloat(m[1]) * ({ K: 1e3, M: 1e6, B: 1e9 }[m[2]] || 1);
+  return t.toLowerCase();
+}
+
+function sortMainTable(col, dir) {
+  tableSort = { col, dir };
+  const tbody = document.getElementById('tbody');
+  const rows = [...tbody.querySelectorAll('tr')];
+  const totals = rows.filter(r => r.classList.contains('total-row'));
+  const body = rows.filter(r => !r.classList.contains('total-row'));
+  body.sort((a, b) => {
+    const va = cellSortVal(a.children[col]);
+    const vb = cellSortVal(b.children[col]);
+    const cmp = (typeof va === 'number' && typeof vb === 'number')
+      ? va - vb
+      : String(va).localeCompare(String(vb));
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  tbody.replaceChildren(...body, ...totals);
+  [...document.getElementById('thead').querySelectorAll('th')].forEach((th, i) => {
+    th.textContent = th.textContent.replace(/ [▲▼]$/, '');
+    if (i === col) th.textContent += dir === 'asc' ? ' ▲' : ' ▼';
+  });
+}
+
+function attachTableSort() {
+  const ths = [...document.getElementById('thead').querySelectorAll('th')];
+  if (!ths.length) return;
+  ths.forEach((th, i) => {
+    th.classList.add('sortable');
+    th.addEventListener('click', () => {
+      const dir = (tableSort && tableSort.col === i && tableSort.dir === 'desc') ? 'asc' : 'desc';
+      sortMainTable(i, dir);
+    });
+  });
+  const costIdx = ths.findIndex(th => th.textContent.trim().startsWith('Est. Cost'));
+  if (costIdx >= 0) sortMainTable(costIdx, 'desc');
+  else tableSort = null;
 }
 
 // ---- View: By Model (horizontal bar, total per model) ----
@@ -837,7 +890,7 @@ function renderTimeline() {
     const dayTotal = models_sorted.reduce((s, m) => s + sumRecord(byDate[date]?.[m]), 0);
     const dayCost  = models_sorted.reduce((s, m) => s + costOf(byDate[date]?.[m], m), 0);
     return `<tr>
-      <td>${fmtDate(date)}</td>
+      <td data-sort="${date}">${fmtDate(date)}</td>
       ${models_sorted.map(m => `<td class="num">${fmt(sumRecord(byDate[date]?.[m]))}</td>`).join('')}
       <td class="bold">${fmt(dayTotal)}</td>
       <td class="bold">${fmtUSD(dayCost)}</td>
@@ -991,7 +1044,7 @@ function renderModelDrill(model) {
   const rows = [...activeDates].reverse().map(date => {
     const r = mData[date];
     return `<tr>
-      <td>${fmtDate(date)}</td>
+      <td data-sort="${date}">${fmtDate(date)}</td>
       <td class="num">${fmt(r.input)}</td>
       <td class="num">${fmt(r.cacheRead)}</td>
       <td class="num">${fmt(r.cacheCreate)}</td>
@@ -1258,6 +1311,25 @@ function init() {
   darkQuery.addEventListener('change', () => { if (summary) renderView(); });
 
   loadSource();
+
+  // Served locally, keep the data fresh hands-free: rebuild from the
+  // transcripts on open and every 30 minutes while the tab stays open.
+  // mode=local skips the git commit/push, so this creates no repo noise;
+  // the manual refresh button still publishes to GitHub Pages.
+  if (SERVED_LOCALLY) {
+    const autoRefresh = async () => {
+      const btn = document.getElementById('refresh-btn');
+      if (btn.classList.contains('spinning')) return;
+      btn.classList.add('spinning');
+      try {
+        await fetchTimeout('/refresh?mode=local', 120000, { method: 'POST' });
+        await loadSource();
+      } catch {}
+      btn.classList.remove('spinning');
+    };
+    autoRefresh();
+    setInterval(autoRefresh, 30 * 60 * 1000);
+  }
 }
 
 init();

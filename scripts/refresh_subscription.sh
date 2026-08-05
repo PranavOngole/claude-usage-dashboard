@@ -6,5 +6,7 @@
 # must stay tiny and unchanging).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-git pull --rebase --quiet origin main
+# --autostash: local-only rebuilds (refresh_server.py mode=local) leave
+# data files modified; stash them through the pull instead of failing.
+git pull --rebase --autostash --quiet origin main
 exec bash scripts/refresh_inner.sh

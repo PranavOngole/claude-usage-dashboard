@@ -1108,8 +1108,12 @@ async function rebuildViaHelper() {
   // rebuild on this Mac.
   if (source === 'api') return 'skipped';
 
+  // targetAddressSpace exempts the http:// loopback call from Chrome's
+  // mixed-content blocking and routes it through the Local Network Access
+  // permission instead. Browsers that don't know the option ignore it.
   try {
-    const ping = await fetchTimeout(`${LOCAL_HELPER}/ping`, 1500);
+    const ping = await fetchTimeout(`${LOCAL_HELPER}/ping`, 5000,
+      { targetAddressSpace: 'loopback' });
     if (!ping.ok) return 'unreachable';
   } catch { return 'unreachable'; }
 
@@ -1117,7 +1121,8 @@ async function rebuildViaHelper() {
   const before = lastFetchedAt;
   let resp;
   try {
-    resp = await fetchTimeout(`${LOCAL_HELPER}/refresh`, 300000, { method: 'POST' });
+    resp = await fetchTimeout(`${LOCAL_HELPER}/refresh`, 300000,
+      { method: 'POST', targetAddressSpace: 'loopback' });
   } catch { return 'failed'; }
   if (!resp.ok) return 'failed';
 

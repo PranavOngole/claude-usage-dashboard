@@ -21,6 +21,8 @@ import io
 import json
 import sys
 import zipfile
+
+import pricing
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -135,7 +137,7 @@ def main():
                 },
                 "output_tokens": b["output"],
             })
-        data.append({"starting_at": f"{day}T00:00:00Z", "results": results})
+        data.append(pricing.stamp_bucket({"starting_at": f"{day}T00:00:00Z", "results": results}))
 
     output = {
         "fetched_at": datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%SZ"),

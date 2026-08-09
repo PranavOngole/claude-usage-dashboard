@@ -1,0 +1,24 @@
+{
+  "comment": "Point-in-time API list rates, $/M tokens [input, output]. Each period applies from its effective_from date (inclusive) until the next period's date. When Anthropic changes prices, APPEND a new period; never edit an old one. Days are priced with the period in effect on that day, so rate changes never re-price history. Cache multipliers: reads 10% of input rate, 5-min cache writes 1.25x, 1-hour cache writes 2x.",
+  "cache_read_multiplier": 0.1,
+  "cache_write_5m_multiplier": 1.25,
+  "cache_write_1h_multiplier": 2.0,
+  "periods": [
+    {
+      "effective_from": "2024-01-01",
+      "rates": {
+        "claude-fable-5": [10, 50],
+        "claude-mythos": [10, 50],
+        "claude-opus-5": [5, 25],
+        "claude-opus-4-8": [5, 25],
+        "claude-opus-4-7": [5, 25],
+        "claude-opus-4-6": [5, 25],
+        "claude-opus-4-5": [5, 25],
+        "claude-sonnet-5": [3, 15],
+        "claude-sonnet-4": [3, 15],
+        "claude-haiku-4-5": [1, 5],
+        "claude-ai-chat": [3, 15]
+      }
+    }
+  ]
+}

@@ -15,6 +15,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pricing
+
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "data" / "subscription_usage.json"
 MAX_DAYS = 90
@@ -133,6 +135,9 @@ def main():
         data.append({"starting_at": f"{day}T00:00:00Z", "results": results})
 
     data = merge_with_published(data)
+    # Stamp point-in-time costs: fresh buckets get priced at the rates in
+    # effect on their day; already-stamped published buckets are untouched.
+    data = [pricing.stamp_bucket(b) for b in data]
 
     output = {
         "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

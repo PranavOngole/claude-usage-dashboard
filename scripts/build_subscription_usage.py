@@ -52,6 +52,39 @@ def iter_usage_records():
             continue
 
 
+def bucket_total(bucket):
+    total = 0
+    for r in bucket.get("results", []):
+        cc = r.get("cache_creation") or {}
+        total += (
+            (r.get("uncached_input_tokens") or 0)
+            + (r.get("cache_read_input_tokens") or 0)
+            + (r.get("output_tokens") or 0)
+            + (cc.get("ephemeral_1h_input_tokens") or 0)
+            + (cc.get("ephemeral_5m_input_tokens") or 0)
+        )
+    return total
+
+
+def merge_with_published(fresh):
+    """Never let history erode. Claude Code deletes old session transcripts
+    (retention window), so a pure recount silently loses old days. Merge the
+    recount with the previously published file: per day, keep whichever side
+    counted more tokens. Dedup means a recount never overcounts, so the
+    bigger number is always the more complete one.
+    """
+    try:
+        published = json.load(open(OUTPUT_PATH)).get("data", [])
+    except (OSError, json.JSONDecodeError):
+        return fresh
+    by_day = {b["starting_at"][:10]: b for b in published}
+    for b in fresh:
+        day = b["starting_at"][:10]
+        if day not in by_day or bucket_total(b) >= bucket_total(by_day[day]):
+            by_day[day] = b
+    return [by_day[d] for d in sorted(by_day)]
+
+
 def main():
     if not PROJECTS_DIR.is_dir():
         print(f"ERROR: {PROJECTS_DIR} not found.", file=sys.stderr)
@@ -98,6 +131,8 @@ def main():
                 "output_tokens": b["output_tokens"],
             })
         data.append({"starting_at": f"{day}T00:00:00Z", "results": results})
+
+    data = merge_with_published(data)
 
     output = {
         "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

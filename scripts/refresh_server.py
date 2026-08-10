@@ -23,6 +23,8 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from live_tracker import LiveTracker
+
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "scripts" / "refresh_subscription.sh"
 ALLOWED_ORIGINS = {
@@ -41,6 +43,7 @@ CONTENT_TYPES = {
 }
 
 refresh_lock = threading.Lock()
+live_tracker = LiveTracker()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -92,7 +95,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0]
-        if path == "/ping":
+        if path == "/live":
+            # Polled every second by the local page; deliberately unlogged.
+            self._send_json(200, live_tracker.snapshot())
+        elif path == "/ping":
             self._log("")
             self._send_json(200, {"ok": True})
         elif path in ("/", "/index.html"):

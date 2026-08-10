@@ -142,6 +142,16 @@
       letter-spacing: 0.11em;
       color: var(--muted);
     }
+    .stat .label .live-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #1baf7a;
+      margin-right: 6px;
+      animation: livepulse 1.6s ease-in-out infinite;
+    }
+    @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .stat .live-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .stat .val {
       font-size: 30px;
       font-weight: 700;
@@ -1335,6 +1345,34 @@ function init() {
     };
     autoRefresh();
     setInterval(autoRefresh, 30 * 60 * 1000);
+
+    // Live ticker: today's usage tailed straight from the transcripts by
+    // the helper (/live), updated every second. renderStats rebuilds the
+    // stats bar on each data load, so the tile re-creates itself if gone.
+    const liveTick = async () => {
+      let d;
+      try {
+        const r = await fetch('/live');
+        if (!r.ok) return;
+        d = await r.json();
+      } catch { return; }
+      let val = document.getElementById('live-val');
+      if (!val) {
+        const bar = document.querySelector('.stats-inner');
+        if (!bar) return;
+        const tile = document.createElement('div');
+        tile.className = 'stat';
+        tile.innerHTML = '<div class="label"><span class="live-dot"></span>Today (live)</div>' +
+          '<div class="val" id="live-val"></div><div class="live-sub" id="live-sub"></div>';
+        bar.appendChild(tile);
+        val = document.getElementById('live-val');
+      }
+      val.textContent = fmt(d.total_tokens) + ' tokens';
+      document.getElementById('live-sub').textContent =
+        fmtUSD(d.est_cost) + ' est \u00b7 as of ' + d.updated_at.slice(11, 19);
+    };
+    liveTick();
+    setInterval(liveTick, 1000);
   }
 }
 

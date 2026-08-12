@@ -557,9 +557,13 @@ function assignSlots(models) {
   let next = 0;
   for (const m of models) {
     if (slotOf[m] !== undefined) continue;
-    while (taken.has(next % 8)) next++;
+    // All 8 palette slots can be taken (the Codex tab has 10+ models);
+    // once exhausted, colors repeat instead of searching forever.
+    let guard = 0;
+    while (taken.has(next % 8) && guard < 8) { next++; guard++; }
     slotOf[m] = next % 8;
     taken.add(next % 8);
+    next++;
   }
   return slotOf;
 }

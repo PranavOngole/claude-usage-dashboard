@@ -321,6 +321,7 @@
       <div class="source-tabs" id="source-tabs">
         <button data-source="subscription" class="active">Claude Code</button>
         <button data-source="claudeai">claude.ai</button>
+        <button data-source="codex">Codex</button>
         <button data-source="api">API</button>
       </div>
       <button class="refresh-btn" id="refresh-btn" title="On this Mac: rebuild the data and republish. Elsewhere: reload the latest published data" aria-label="Refresh data">
@@ -420,6 +421,18 @@ const PRICING = [
   ['claude-sonnet-4',   3, 15],
   ['claude-haiku-4-5',  1,  5],
   ['claude-ai-chat',    3, 15],  // estimated chat volume, assumed Sonnet rates
+  // OpenAI (Codex CLI) list rates; specific prefixes before the gpt-5 catch-all
+  ['gpt-5.6-sol',       5, 30],
+  ['gpt-5.6-terra',     2, 12],
+  ['gpt-5.6-luna',    0.2, 1.2],
+  ['gpt-5.5',           5, 30],
+  ['gpt-5.4',         2.5, 15],
+  ['gpt-5.3-codex',  1.75, 14],
+  ['gpt-5.2-codex',  1.75, 14],  // assumed, not on the published price list
+  ['codex-auto-review', 1.75, 14],  // assumed codex rates
+  ['codex-unknown',  1.75, 14],  // sessions with no recorded model, assumed
+  ['gpt-5-mini',     0.25, 2],
+  ['gpt-5',          1.25, 10],
 ];
 
 function priceFor(model) {
@@ -472,6 +485,17 @@ const SOURCES = {
         <strong>Settings &rsaquo; Privacy &rsaquo; Export data</strong>, download the zip
         from the email into <code>~/Downloads</code>, then double-click
         <code>Refresh Claude Usage</code> on your Desktop.
+      </p>`,
+  },
+  codex: {
+    file: 'data/codex_usage.json',
+    label: 'Codex',
+    emptyHtml: `
+      <h2>No Codex data yet</h2>
+      <p>
+        This view reads <code>data/codex_usage.json</code>, built from the OpenAI
+        Codex CLI session rollouts in <code>~/.codex/sessions</code>. Run a refresh
+        on your Mac to generate and push it.
       </p>`,
   },
   api: {
@@ -1111,6 +1135,9 @@ function renderRatesNote() {
     `Costs are stamped per day at the rates in effect on that day (data/pricing.json), so later rate changes never re-price history.` +
     (summary.models.includes('claude-ai-chat')
       ? ` claude-ai-chat is chat volume estimated from your claude.ai export (~4 chars/token, context replayed with cache assumptions), priced at assumed Sonnet rates; thinking tokens, system prompts, and attachments are not included, so treat it as a floor.`
+      : '') +
+    (summary.models.some(m => m.startsWith('gpt-') || m.startsWith('codex-'))
+      ? ` Codex models are priced at OpenAI list rates: cached input bills at 10% of the input rate, no cache-write premium, reasoning billed as output. codex-auto-review and unlisted models use assumed codex rates.`
       : '');
 }
 

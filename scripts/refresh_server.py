@@ -129,7 +129,8 @@ class Handler(BaseHTTPRequestHandler):
                 cmd = [
                     "/bin/bash", "-c",
                     "python3 scripts/build_subscription_usage.py"
-                    " && python3 scripts/build_claudeai_usage.py",
+                    " && python3 scripts/build_claudeai_usage.py"
+                    " && python3 scripts/build_codex_usage.py",
                 ]
             else:
                 cmd = ["/bin/bash", str(SCRIPT)]

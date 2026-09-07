@@ -22,8 +22,9 @@ import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit, parse_qs
 
-from live_tracker import LiveTracker
+from live_tracker import ClaudeLiveTracker, CodexLiveTracker
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "scripts" / "refresh_subscription.sh"
@@ -43,7 +44,12 @@ CONTENT_TYPES = {
 }
 
 refresh_lock = threading.Lock()
-live_tracker = LiveTracker()
+# Keyed the same as the dashboard's own SOURCES object, so the frontend
+# just passes its current tab name straight through as ?source=.
+LIVE_TRACKERS = {
+    "subscription": ClaudeLiveTracker(),
+    "codex": CodexLiveTracker(),
+}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -94,10 +100,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        path = self.path.split("?")[0]
+        split = urlsplit(self.path)
+        path = split.path
         if path == "/live":
             # Polled every second by the local page; deliberately unlogged.
-            self._send_json(200, live_tracker.snapshot())
+            src = parse_qs(split.query).get("source", ["subscription"])[0]
+            tracker = LIVE_TRACKERS.get(src)
+            if tracker is None:
+                self._send_json(400, {"error": f"unknown live source: {src}"})
+                return
+            self._send_json(200, tracker.snapshot())
         elif path == "/ping":
             self._log("")
             self._send_json(200, {"ok": True})

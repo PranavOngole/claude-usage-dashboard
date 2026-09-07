@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Claude Token Usage</title>
+  <title>AI Token Usage Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -313,8 +313,8 @@
 <div class="header">
   <div class="header-inner">
     <div>
-      <div class="eyebrow">Anthropic Usage</div>
-      <h1>Claude Token Usage</h1>
+      <div class="eyebrow">Usage Tracker</div>
+      <h1>AI Token Usage Dashboard</h1>
       <div class="updated" id="updated">Loading...</div>
     </div>
     <div class="header-right">
@@ -323,6 +323,7 @@
         <button data-source="claudeai">claude.ai</button>
         <button data-source="codex">Codex</button>
         <button data-source="api">API</button>
+        <button data-source="combined">Combined</button>
       </div>
       <button class="refresh-btn" id="refresh-btn" title="On this Mac: rebuild the data and republish. Elsewhere: reload the latest published data" aria-label="Refresh data">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -390,6 +391,32 @@ const MODEL_SLOTS = [
   ['claude-ai-chat',   6],
   ['claude-opus-4',    7],
 ];
+
+// Retired preview/mini model names with negligible lifetime spend (a few
+// dollars each, one-off trial sessions). Dropped from the Codex tab and
+// the Combined tab so the legend isn't cluttered with dead entries.
+const CODEX_EXCLUDED_MODELS = new Set([
+  'gpt-5.4-mini',
+  'gpt-5.1-codex-mini',
+  'gpt-5.2',
+  'gpt-5.2-codex',
+  'gpt-5.3-codex',
+]);
+
+// Drops excluded models from each day's results, then drops any day left
+// with zero results — a bucket with an empty results array still counts
+// as "a day with data" downstream, which would render a phantom empty day.
+function filterExcludedModels(raw, excluded) {
+  return {
+    ...raw,
+    data: (raw.data || [])
+      .map(bucket => ({
+        ...bucket,
+        results: (bucket.results || []).filter(r => !excluded.has(r.model)),
+      }))
+      .filter(bucket => bucket.results.length > 0),
+  };
+}
 
 // Token-type colors: the three input kinds as one blue ramp, output as the
 // accent hue.
@@ -512,6 +539,17 @@ const SOURCES = {
         set as the <code>ANTHROPIC_ADMIN_KEY</code> repo secret.
       </p>`,
   },
+  combined: {
+    file: 'data/subscription_usage.json',
+    label: 'Combined',
+    emptyHtml: `
+      <h2>No combined data yet</h2>
+      <p>
+        This view sums <code>data/subscription_usage.json</code> (Claude Code) and
+        <code>data/codex_usage.json</code> (Codex) est. cost per day. Run a refresh
+        on your Mac to generate both.
+      </p>`,
+  },
 };
 
 let chart = null;
@@ -520,6 +558,7 @@ let source = 'subscription';
 let view = 'models';
 let drill = null;
 let lastFetchedAt = null;
+let combinedDaily = null;
 
 // ---- Utilities ----
 
@@ -715,6 +754,11 @@ function yAxis(opts = {}) {
 
 function renderView() {
   destroyChart();
+  if (source === 'combined') {
+    drill ? renderCombinedDayDrill(drill.value) : (view === 'month' ? renderCombinedByMonth() : renderCombinedByDay());
+    attachTableSort();
+    return;
+  }
   if (drill) {
     drill.type === 'date' ? renderDateDrill(drill.value) : renderModelDrill(drill.value);
   } else {
@@ -1119,9 +1163,220 @@ function renderModelDrill(model) {
   renderRatesNote();
 }
 
+// ---- View: Combined (Claude Code + Codex, cost-only, by day/month) ----
+// A synthetic two-series view (not raw model data): each point is that
+// day's/month's summed est_cost from the two source files. Token counts
+// aren't shown here since GPT and Claude tokens aren't comparable.
+
+function monthKeyOf(date) { return date.slice(0, 7); }
+
+function monthLabel(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function monthLabelShort(key) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
+
+function localDateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function aggregateByMonth(rows) {
+  const byMonth = {};
+  for (const r of rows) {
+    const mk = monthKeyOf(r.date);
+    if (!byMonth[mk]) byMonth[mk] = { month: mk, claude: 0, codex: 0, total: 0 };
+    byMonth[mk].claude += r.claude;
+    byMonth[mk].codex  += r.codex;
+    byMonth[mk].total  += r.total;
+  }
+  return Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function combinedChart(labels, rows, barOpts, onClick) {
+  const t = theme();
+  const pal = seriesPalette();
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Claude Code', data: rows.map(r => r.claude), backgroundColor: pal[0], borderColor: t.surface, borderWidth: 1, ...barOpts },
+        { label: 'Codex',       data: rows.map(r => r.codex),  backgroundColor: pal[1], borderColor: t.surface, borderWidth: 1, ...barOpts },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: legendOpts(),
+        tooltip: tooltipOpts({
+          callbacks: {
+            label: c => ` ${c.dataset.label}: ${fmtUSD(c.raw)}`,
+            footer: items => `Total: ${fmtUSD(items.reduce((s, i) => s + i.raw, 0))}`,
+          },
+        }),
+      },
+      scales: {
+        x: { ...xAxis(), stacked: true },
+        y: { ...yAxis(), ticks: { ...yAxis().ticks, callback: v => fmtUSD(v) }, stacked: true },
+      },
+      ...(onClick ? { onClick } : {}),
+    },
+  });
+}
+
+function combinedTable(rows, keyLabel, keyOf, labelOf) {
+  document.getElementById('thead').innerHTML =
+    `<th>${keyLabel}</th><th class="num">Claude Code</th><th class="num">Codex</th><th class="num">Est. Cost</th>`;
+
+  const bodyRows = [...rows].reverse().map(r => `<tr>
+    <td data-sort="${keyOf(r)}">${labelOf(r)}</td>
+    <td class="num">${fmtUSD(r.claude)}</td>
+    <td class="num">${fmtUSD(r.codex)}</td>
+    <td class="bold">${fmtUSD(r.total)}</td>
+  </tr>`).join('');
+
+  const t = rows.reduce((a, r) => ({
+    claude: a.claude + r.claude, codex: a.codex + r.codex, total: a.total + r.total,
+  }), { claude: 0, codex: 0, total: 0 });
+
+  const totalRow = `<tr class="total-row">
+    <td>Total</td>
+    <td class="num">${fmtUSD(t.claude)}</td>
+    <td class="num">${fmtUSD(t.codex)}</td>
+    <td class="num">${fmtUSD(t.total)}</td>
+  </tr>`;
+
+  document.getElementById('tbody').innerHTML = bodyRows + totalRow;
+  setRatesNote(
+    `Combined Est. Cost = Claude Code (<code>data/subscription_usage.json</code>) + Codex ` +
+    `(<code>data/codex_usage.json</code>), each priced at the stamped point-in-time rate for that day. ` +
+    `${CODEX_EXCLUDED_MODELS.size} retired/negligible Codex model name(s) excluded from the Codex total.`
+  );
+}
+
+function renderCombinedByDay() {
+  document.getElementById('chart-title').textContent = 'Combined daily cost';
+  document.getElementById('chart-hint').textContent  = 'Claude Code + Codex, by day.';
+
+  combinedChart(combinedDaily.map(r => fmtDate(r.date)), combinedDaily,
+    { barPercentage: 0.72, categoryPercentage: 0.86 });
+  combinedTable(combinedDaily, 'Date', r => r.date, r => fmtDate(r.date));
+}
+
+function renderCombinedByMonth() {
+  document.getElementById('chart-title').textContent = 'Combined monthly cost';
+  document.getElementById('chart-hint').textContent  = "Claude Code + Codex, by month. Click a bar to see that month's days.";
+
+  const rows = aggregateByMonth(combinedDaily);
+  combinedChart(rows.map(r => monthLabelShort(r.month)), rows,
+    { barPercentage: 0.6, categoryPercentage: 0.7 },
+    (e, els) => {
+      if (!els.length) return;
+      drill = { type: 'month', value: rows[els[0].index].month };
+      updateNav();
+      renderView();
+    });
+  combinedTable(rows, 'Month', r => r.month, r => monthLabel(r.month));
+}
+
+function renderCombinedDayDrill(monthKey) {
+  document.getElementById('chart-title').textContent = `Daily cost: ${monthLabel(monthKey)}`;
+  document.getElementById('chart-hint').textContent  = '';
+
+  const rows = combinedDaily.filter(r => r.date.startsWith(monthKey));
+  combinedChart(rows.map(r => fmtDate(r.date)), rows,
+    { barPercentage: 0.72, categoryPercentage: 0.86 });
+  combinedTable(rows, 'Date', r => r.date, r => fmtDate(r.date));
+}
+
+function renderCombinedStats() {
+  const totalClaude = combinedDaily.reduce((s, r) => s + r.claude, 0);
+  const totalCodex  = combinedDaily.reduce((s, r) => s + r.codex, 0);
+  const todayKey  = localDateKey(new Date());
+  const monthKey  = todayKey.slice(0, 7);
+  const todayCost = combinedDaily.find(r => r.date === todayKey)?.total || 0;
+  const monthCost = combinedDaily.filter(r => r.date.startsWith(monthKey)).reduce((s, r) => s + r.total, 0);
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="label">Total Combined</div><div class="val">${fmtUSD(totalClaude + totalCodex)}</div></div>
+    <div class="stat"><div class="label">Claude Code</div><div class="val">${fmtUSD(totalClaude)}</div></div>
+    <div class="stat"><div class="label">Codex</div><div class="val">${fmtUSD(totalCodex)}</div></div>
+    <div class="stat"><div class="label">Today</div><div class="val">${fmtUSD(todayCost)}</div></div>
+    <div class="stat"><div class="label">This Month</div><div class="val">${fmtUSD(monthCost)}</div></div>
+    <div class="stat"><div class="label">Days</div><div class="val">${combinedDaily.length}</div></div>
+  `;
+}
+
+async function loadCombined() {
+  destroyChart();
+  let subRaw, codexRaw;
+  try {
+    const [subResp, codexResp] = await Promise.all([
+      fetch(`data/subscription_usage.json?t=${Date.now()}`),
+      fetch(`data/codex_usage.json?t=${Date.now()}`),
+    ]);
+    subRaw   = subResp.ok   ? await subResp.json()   : { data: [] };
+    codexRaw = codexResp.ok ? await codexResp.json() : { data: [] };
+  } catch (e) {
+    showEmpty();
+    return;
+  }
+
+  codexRaw = filterExcludedModels(codexRaw, CODEX_EXCLUDED_MODELS);
+
+  const perDay = {};
+  const accumulate = (raw, key) => {
+    for (const bucket of (raw.data || [])) {
+      const date = bucket.starting_at.slice(0, 10);
+      for (const r of (bucket.results || [])) {
+        if (!perDay[date]) perDay[date] = { claude: 0, codex: 0 };
+        perDay[date][key] += (typeof r.est_cost === 'number') ? r.est_cost : costOf({
+          input:       r.uncached_input_tokens || 0,
+          cacheRead:   r.cache_read_input_tokens || 0,
+          cc5m:        (r.cache_creation || {}).ephemeral_5m_input_tokens || 0,
+          cc1h:        (r.cache_creation || {}).ephemeral_1h_input_tokens || 0,
+          output:      r.output_tokens || 0,
+        }, r.model || 'unknown');
+      }
+    }
+  };
+  accumulate(subRaw, 'claude');
+  accumulate(codexRaw, 'codex');
+
+  const dates = Object.keys(perDay).sort();
+  if (dates.length === 0) {
+    showEmpty();
+    return;
+  }
+
+  combinedDaily = dates.map(date => ({
+    date,
+    claude: perDay[date].claude,
+    codex:  perDay[date].codex,
+    total:  perDay[date].claude + perDay[date].codex,
+  }));
+
+  lastFetchedAt = [subRaw.fetched_at, codexRaw.fetched_at].filter(Boolean).sort().pop() || null;
+
+  showContent();
+  document.getElementById('updated').textContent = lastFetchedAt
+    ? `${SOURCES.combined.label} usage. Last updated: ${new Date(lastFetchedAt).toLocaleString()}`
+    : `${SOURCES.combined.label} usage`;
+
+  renderCombinedStats();
+  updateNav();
+  renderView();
+}
+
 // ---- Rates footnote ----
 
-function renderRatesNote() {
+function setRatesNote(html) {
   let note = document.getElementById('rates-note');
   if (!note) {
     note = document.createElement('div');
@@ -1129,11 +1384,15 @@ function renderRatesNote() {
     note.className = 'rates-note';
     document.getElementById('table-card').appendChild(note);
   }
+  note.innerHTML = html;
+}
+
+function renderRatesNote() {
   const used = summary.models.map(m => {
     const p = priceFor(m);
     return p ? `${m}: $${p.inp} in / $${p.out} out` : `${m}: rate unknown`;
   });
-  note.innerHTML =
+  setRatesNote(
     `Est. cost at standard API list prices per 1M tokens (${used.join(' &middot; ')}). ` +
     `Cache reads bill at 10% of the input rate; cache writes at 1.25x (5-min TTL) or 2x (1-hour TTL). ` +
     `Costs are stamped per day at the rates in effect on that day (data/pricing.json), so later rate changes never re-price history.` +
@@ -1142,10 +1401,25 @@ function renderRatesNote() {
       : '') +
     (summary.models.some(m => m.startsWith('gpt-') || m.startsWith('codex-'))
       ? ` Codex models are priced at OpenAI list rates: cached input bills at 10% of the input rate, no cache-write premium, reasoning billed as output. codex-auto-review and unlisted models use assumed codex rates.`
-      : '');
+      : '')
+  );
 }
 
 // ---- Navigation state ----
+
+// The #tabs view-switcher is relabeled per source: By Model/By Date for
+// the raw sources, By Day/By Month for Combined's cost-only rollup.
+function setSourceViewTabs() {
+  const btns = document.querySelectorAll('#tabs button[data-view]');
+  if (source === 'combined') {
+    btns[0].textContent = 'By Day';   btns[0].dataset.view = 'day';
+    btns[1].textContent = 'By Month'; btns[1].dataset.view = 'month';
+  } else {
+    btns[0].textContent = 'By Model'; btns[0].dataset.view = 'models';
+    btns[1].textContent = 'By Date';  btns[1].dataset.view = 'timeline';
+  }
+  btns.forEach(b => b.classList.toggle('active', b.dataset.view === view));
+}
 
 function updateNav() {
   const tabs = document.getElementById('tabs');
@@ -1155,7 +1429,9 @@ function updateNav() {
   if (drill) {
     tabs.style.display = 'none';
     bc.style.display   = 'flex';
-    bcLabel.textContent = drill.type === 'date' ? fmtDate(drill.value) : drill.value;
+    bcLabel.textContent = drill.type === 'date' ? fmtDate(drill.value)
+      : drill.type === 'month' ? monthLabel(drill.value)
+      : drill.value;
   } else {
     tabs.style.display = 'flex';
     bc.style.display   = 'none';
@@ -1253,6 +1529,8 @@ async function rebuildViaHelper() {
 // ---- Data loading ----
 
 async function loadSource() {
+  if (source === 'combined') return loadCombined();
+
   destroyChart();
   let raw;
   try {
@@ -1265,6 +1543,8 @@ async function loadSource() {
     showEmpty();
     return;
   }
+
+  if (source === 'codex') raw = filterExcludedModels(raw, CODEX_EXCLUDED_MODELS);
 
   if (!raw.data || raw.data.length === 0) {
     showEmpty();
@@ -1301,12 +1581,18 @@ async function loadSource() {
 // ---- Init ----
 
 function init() {
-  // Source switching (Claude Code vs API)
+  // Source switching (Claude Code vs API vs Combined, etc.)
   document.getElementById('source-tabs').addEventListener('click', e => {
     const btn = e.target.closest('button[data-source]');
     if (!btn || btn.dataset.source === source) return;
     source = btn.dataset.source;
     drill = null;
+    // Combined has its own view vocabulary (day/month instead of
+    // models/timeline); only touch `view` at the boundary so switching
+    // among the other sources keeps its existing persist-the-view behavior.
+    if (source === 'combined' && view !== 'day' && view !== 'month') view = 'day';
+    else if (source !== 'combined' && (view === 'day' || view === 'month')) view = 'models';
+    setSourceViewTabs();
     document.querySelectorAll('#source-tabs button').forEach(b =>
       b.classList.toggle('active', b.dataset.source === source));
     loadSource();
@@ -1380,13 +1666,24 @@ function init() {
     // Live ticker: today's usage tailed straight from the transcripts by
     // the helper (/live), updated every second. renderStats rebuilds the
     // stats bar on each data load, so the tile re-creates itself if gone.
+    // Sources with a live tailer on the helper (scripts/live_tracker.py).
+    // Keyed the same as SOURCES, passed straight through as ?source=.
+    const LIVE_SOURCES = new Set(['subscription', 'codex']);
+
     const liveTick = async () => {
+      // Showing another tab's live number while viewing an unrelated tab
+      // reads as if it were that tab's own number, which it isn't. Pin
+      // the source this tick is for and re-check after the await too,
+      // since it can change while the fetch is in flight.
+      if (!LIVE_SOURCES.has(source)) return;
+      const forSource = source;
       let d;
       try {
-        const r = await fetch('/live');
+        const r = await fetch(`/live?source=${forSource}`);
         if (!r.ok) return;
         d = await r.json();
       } catch { return; }
+      if (source !== forSource) return;
       let val = document.getElementById('live-val');
       if (!val) {
         const bar = document.querySelector('.stats-inner');

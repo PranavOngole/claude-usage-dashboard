@@ -1,5 +1,5 @@
 {
-  "comment": "Point-in-time API list rates, $/M tokens [input, output]. Each period applies from its effective_from date (inclusive) until the next period's date. When Anthropic changes prices, APPEND a new period; never edit an old one. Days are priced with the period in effect on that day, so rate changes never re-price history. Cache multipliers: reads 10% of input rate, 5-min cache writes 1.25x, 1-hour cache writes 2x. Claude Sonnet 5 launched with introductory $2/$10 per M pricing through 2026-08-31, with a scheduled standard-rate increase to $3/$15 on 2026-09-01. As of 2026-08-17, platform.claude.com/docs/en/about-claude/pricing confirms the $2/$10 rate is now the permanent standard price and the scheduled 2026-09-01 increase will not occur; the 2026-09-01 period below was corrected in place to keep claude-sonnet-5 at $2/$10 rather than restating the old planned increase. OpenAI (Codex) rates added 2026-08-11 from developers.openai.com/api/docs/pricing; OpenAI cached input bills at 10% of input (same cache_read_multiplier) and has no cache-write premium (Codex data carries no write tokens). gpt-5.2-codex and codex-auto-review have no published rate and are ASSUMED at gpt-5.3-codex rates.",
+  "comment": "Point-in-time API list rates, $/M tokens [input, output]. Each period applies from its effective_from date (inclusive) until the next period's date. When Anthropic changes prices, APPEND a new period; never edit an old one. Days are priced with the period in effect on that day, so rate changes never re-price history. Cache multipliers: reads 10% of input rate, 5-min cache writes 1.25x, 1-hour cache writes 2x. Claude Sonnet 5 launched with introductory $2/$10 per M pricing through 2026-08-31, with a scheduled standard-rate increase to $3/$15 on 2026-09-01. As of 2026-08-17, platform.claude.com/docs/en/about-claude/pricing confirms the $2/$10 rate is now the permanent standard price and the scheduled 2026-09-01 increase will not occur; the 2026-09-01 period below was corrected in place to keep claude-sonnet-5 at $2/$10 rather than restating the old planned increase. OpenAI (Codex) rates added 2026-08-11 from developers.openai.com/api/docs/pricing; OpenAI cached input bills at 10% of input (same cache_read_multiplier) and has no cache-write premium (Codex data carries no write tokens). gpt-5.2-codex and codex-auto-review have no published rate and are ASSUMED at gpt-5.3-codex rates. gpt-6-astra is priced at $10/$50 per M tokens from 2026-09-04.",
   "cache_read_multiplier": 0.1,
   "cache_write_5m_multiplier": 1.25,
   "cache_write_1h_multiplier": 2.0,
@@ -188,6 +188,34 @@
           1.75,
           14
         ]
+      }
+    },
+    {
+      "effective_from": "2026-09-04",
+      "rates": {
+        "claude-fable-5": [10, 50],
+        "claude-mythos": [10, 50],
+        "claude-opus-5": [5, 25],
+        "claude-opus-4-8": [5, 25],
+        "claude-opus-4-7": [5, 25],
+        "claude-opus-4-6": [5, 25],
+        "claude-opus-4-5": [5, 25],
+        "claude-sonnet-5": [2, 10],
+        "claude-sonnet-4": [3, 15],
+        "claude-haiku-4-5": [1, 5],
+        "claude-ai-chat": [3, 15],
+        "gpt-5.6-sol": [5, 30],
+        "gpt-5.6-terra": [2, 12],
+        "gpt-5.6-luna": [0.2, 1.2],
+        "gpt-5.5": [5, 30],
+        "gpt-5.4": [2.5, 15],
+        "gpt-5.3-codex": [1.75, 14],
+        "gpt-5.2-codex": [1.75, 14],
+        "codex-auto-review": [1.75, 14],
+        "gpt-5-mini": [0.25, 2],
+        "gpt-5": [1.25, 10],
+        "codex-unknown": [1.75, 14],
+        "gpt-6-astra": [10, 50]
       }
     }
   ]

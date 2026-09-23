@@ -319,9 +319,9 @@
     </div>
     <div class="header-right">
       <div class="source-tabs" id="source-tabs">
-        <button data-source="subscription" class="active">Claude Code</button>
+        <button data-source="subscription">Claude Code</button>
         <button data-source="claudeai">claude.ai</button>
-        <button data-source="codex">Codex</button>
+        <button data-source="codex" class="active">Codex</button>
         <button data-source="api">API</button>
         <button data-source="combined">Combined</button>
       </div>
@@ -557,7 +557,7 @@ const SOURCES = {
 
 let chart = null;
 let summary = null;
-let source = 'subscription';
+let source = 'codex';
 let view = 'models';
 let drill = null;
 let lastFetchedAt = null;

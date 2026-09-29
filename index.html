@@ -939,32 +939,46 @@ function renderModelView() {
   renderRatesNote();
 }
 
-// ---- View: By Date (stacked bar per day, stacked by model) ----
+// ---- View: By Date (daily cost line or stacked token bars) ----
 
 function renderTimeline() {
   const isCost = metric === 'cost';
   document.getElementById('chart-title').textContent = isCost ? 'Daily estimated cost' : 'Daily token usage';
   document.getElementById('chart-hint').textContent  = isCost
-    ? 'Click any bar to see the model cost breakdown for that day.'
+    ? 'Click any point to see the model cost breakdown for that day.'
     : 'Click any bar to see the model breakdown for that day.';
 
   const { dates, byDate } = summary;
   const models_sorted = summary.modelsBySlot;
   const t = theme();
 
-  const datasets = models_sorted.map(model => ({
-    label: model,
-    data: dates.map(date => isCost ? costOf(byDate[date]?.[model], model) : sumRecord(byDate[date]?.[model])),
-    backgroundColor: modelColor(model),
-    borderColor: t.surface,
-    borderWidth: 1,
-    barPercentage: 0.72,
-    categoryPercentage: 0.86,
-  }));
+  const datasets = isCost
+    ? [{
+      label: 'Estimated Cost',
+      data: dates.map(date => models_sorted.reduce((sum, model) => sum + costOf(byDate[date]?.[model], model), 0)),
+      borderColor: seriesPalette()[1],
+      backgroundColor: seriesPalette()[1],
+      borderWidth: 2.5,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      pointBackgroundColor: t.surface,
+      pointBorderWidth: 2,
+      tension: 0.25,
+      fill: false,
+    }]
+    : models_sorted.map(model => ({
+      label: model,
+      data: dates.map(date => sumRecord(byDate[date]?.[model])),
+      backgroundColor: modelColor(model),
+      borderColor: t.surface,
+      borderWidth: 1,
+      barPercentage: 0.72,
+      categoryPercentage: 0.86,
+    }));
 
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
-    type: 'bar',
+    type: isCost ? 'line' : 'bar',
     data: { labels: dates.map(fmtDate), datasets },
     options: {
       responsive: true,
@@ -979,8 +993,8 @@ function renderTimeline() {
         }),
       },
       scales: {
-        x: { ...xAxis(), stacked: true },
-        y: { ...metricAxis(), stacked: true },
+        x: { ...xAxis(), stacked: !isCost },
+        y: { ...metricAxis(), stacked: !isCost },
       },
       onClick: (e, els) => {
         if (!els.length) return;

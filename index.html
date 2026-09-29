@@ -345,6 +345,10 @@
       <button class="active" data-view="models">By Model</button>
       <button data-view="timeline">By Date</button>
     </div>
+    <div class="tab-group" id="metric-tabs" aria-label="Chart metric">
+      <button class="active" data-metric="tokens" aria-pressed="true">Tokens</button>
+      <button data-metric="cost" aria-pressed="false">$ Spent</button>
+    </div>
     <div id="breadcrumb" style="display:none; align-items:center; gap:10px;">
       <button class="back-btn" id="back-btn">&#8592; Back</button>
       <span class="sep">/</span>
@@ -559,6 +563,7 @@ let chart = null;
 let summary = null;
 let source = 'codex';
 let view = 'models';
+let metric = 'tokens';
 let drill = null;
 let lastFetchedAt = null;
 let combinedDaily = null;
@@ -753,6 +758,12 @@ function yAxis(opts = {}) {
   };
 }
 
+function metricAxis() {
+  return metric === 'cost'
+    ? { ...yAxis(), ticks: { ...yAxis().ticks, callback: v => fmtUSD(v) } }
+    : yAxis();
+}
+
 // ---- Main render dispatcher ----
 
 function renderView() {
@@ -823,8 +834,11 @@ function attachTableSort() {
 // ---- View: By Model (horizontal bar, total per model) ----
 
 function renderModelView() {
-  document.getElementById('chart-title').textContent = 'Token usage by model';
-  document.getElementById('chart-hint').textContent  = 'Click any bar to see the daily trend for that model.';
+  const isCost = metric === 'cost';
+  document.getElementById('chart-title').textContent = isCost ? 'Estimated cost by model' : 'Token usage by model';
+  document.getElementById('chart-hint').textContent  = isCost
+    ? 'Click any bar to see the daily cost trend for that model.'
+    : 'Click any bar to see the daily trend for that model.';
 
   const { byModel, dates } = summary;
 
@@ -843,7 +857,7 @@ function renderModelView() {
         return agg;
       }, { input: 0, cacheRead: 0, cacheCreate: 0, output: 0 }),
     }))
-    .sort((a, b) => b.total - a.total);
+    .sort((a, b) => isCost ? b.cost - a.cost : b.total - a.total);
 
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
@@ -851,7 +865,7 @@ function renderModelView() {
     data: {
       labels: sorted.map(x => x.model),
       datasets: [{
-        data: sorted.map(x => x.total),
+        data: sorted.map(x => isCost ? x.cost : x.total),
         backgroundColor: sorted.map(x => x.color),
         borderWidth: 0,
         borderRadius: 4,
@@ -866,12 +880,14 @@ function renderModelView() {
         legend: { display: false },
         tooltip: tooltipOpts({
           callbacks: {
-            label: c => ` ${fmt(c.raw)} tokens  (${fmtUSD(sorted[c.dataIndex].cost)} at API rates)`,
+            label: c => isCost
+              ? ` ${fmtUSD(c.raw)} estimated cost (${fmt(sorted[c.dataIndex].total)} tokens)`
+              : ` ${fmt(c.raw)} tokens  (${fmtUSD(sorted[c.dataIndex].cost)} at API rates)`,
           },
         }),
       },
       scales: {
-        x: { ...yAxis(), grid: { color: theme().grid, drawTicks: false } },
+        x: { ...metricAxis(), grid: { color: theme().grid, drawTicks: false } },
         y: { ...xAxis(), ticks: { font: baseFont(), color: theme().ink2 } },
       },
       onClick: (e, els) => {
@@ -926,8 +942,11 @@ function renderModelView() {
 // ---- View: By Date (stacked bar per day, stacked by model) ----
 
 function renderTimeline() {
-  document.getElementById('chart-title').textContent = 'Daily token usage';
-  document.getElementById('chart-hint').textContent  = 'Click any bar to see the model breakdown for that day.';
+  const isCost = metric === 'cost';
+  document.getElementById('chart-title').textContent = isCost ? 'Daily estimated cost' : 'Daily token usage';
+  document.getElementById('chart-hint').textContent  = isCost
+    ? 'Click any bar to see the model cost breakdown for that day.'
+    : 'Click any bar to see the model breakdown for that day.';
 
   const { dates, byDate } = summary;
   const models_sorted = summary.modelsBySlot;
@@ -935,7 +954,7 @@ function renderTimeline() {
 
   const datasets = models_sorted.map(model => ({
     label: model,
-    data: dates.map(date => sumRecord(byDate[date]?.[model])),
+    data: dates.map(date => isCost ? costOf(byDate[date]?.[model], model) : sumRecord(byDate[date]?.[model])),
     backgroundColor: modelColor(model),
     borderColor: t.surface,
     borderWidth: 1,
@@ -954,14 +973,14 @@ function renderTimeline() {
         legend: legendOpts(),
         tooltip: tooltipOpts({
           callbacks: {
-            label: c => ` ${c.dataset.label}: ${fmt(c.raw)}`,
-            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
+            label: c => ` ${c.dataset.label}: ${isCost ? fmtUSD(c.raw) : fmt(c.raw)}`,
+            footer: items => `Total: ${isCost ? fmtUSD(items.reduce((s, i) => s + i.raw, 0)) : fmt(items.reduce((s, i) => s + i.raw, 0))}`,
           },
         }),
       },
       scales: {
         x: { ...xAxis(), stacked: true },
-        y: { ...yAxis(), stacked: true },
+        y: { ...metricAxis(), stacked: true },
       },
       onClick: (e, els) => {
         if (!els.length) return;
@@ -1003,7 +1022,8 @@ function renderTimeline() {
 // ---- Drilldown: single date -> model breakdown ----
 
 function renderDateDrill(date) {
-  document.getElementById('chart-title').textContent = `Model breakdown: ${fmtDate(date)}`;
+  const isCost = metric === 'cost';
+  document.getElementById('chart-title').textContent = `${isCost ? 'Cost' : 'Model'} breakdown: ${fmtDate(date)}`;
   document.getElementById('chart-hint').textContent  = '';
 
   const { byDate } = summary;
@@ -1011,7 +1031,7 @@ function renderDateDrill(date) {
   const active = summary.modelsBySlot
     .filter(m => dayData[m])
     .map(m => ({ model: m, total: sumRecord(dayData[m]), cost: costOf(dayData[m], m) }))
-    .sort((a, b) => b.total - a.total);
+    .sort((a, b) => isCost ? b.cost - a.cost : b.total - a.total);
   const dayTotal = active.reduce((s, x) => s + x.total, 0);
   const dayCost  = active.reduce((s, x) => s + x.cost, 0);
 
@@ -1021,7 +1041,7 @@ function renderDateDrill(date) {
     data: {
       labels: active.map(x => x.model),
       datasets: [{
-        data: active.map(x => x.total),
+        data: active.map(x => isCost ? x.cost : x.total),
         backgroundColor: active.map(x => modelColor(x.model)),
         borderWidth: 0,
         borderRadius: 4,
@@ -1037,14 +1057,15 @@ function renderDateDrill(date) {
         tooltip: tooltipOpts({
           callbacks: {
             label: c => {
-              const pct = dayTotal > 0 ? ((c.raw / dayTotal) * 100).toFixed(1) : '0';
-              return ` ${fmt(c.raw)} tokens  (${pct}% of day)`;
+              const total = isCost ? dayCost : dayTotal;
+              const pct = total > 0 ? ((c.raw / total) * 100).toFixed(1) : '0';
+              return ` ${isCost ? fmtUSD(c.raw) : `${fmt(c.raw)} tokens`}  (${pct}% of day)`;
             },
           },
         }),
       },
       scales: {
-        x: { ...yAxis(), grid: { color: theme().grid, drawTicks: false } },
+        x: { ...metricAxis(), grid: { color: theme().grid, drawTicks: false } },
         y: { ...xAxis(), ticks: { font: baseFont(), color: theme().ink2 } },
       },
     },
@@ -1086,8 +1107,9 @@ function renderDateDrill(date) {
 // ---- Drilldown: single model -> daily trend ----
 
 function renderModelDrill(model) {
-  document.getElementById('chart-title').textContent = `Daily usage: ${model}`;
-  document.getElementById('chart-hint').textContent  = 'Stacked by token type.';
+  const isCost = metric === 'cost';
+  document.getElementById('chart-title').textContent = `${isCost ? 'Daily estimated cost' : 'Daily usage'}: ${model}`;
+  document.getElementById('chart-hint').textContent  = isCost ? 'Estimated at the rate in effect each day.' : 'Stacked by token type.';
 
   const { dates, byModel } = summary;
   const mData = byModel[model] || {};
@@ -1100,12 +1122,14 @@ function renderModelDrill(model) {
     type: 'bar',
     data: {
       labels: dates.map(fmtDate),
-      datasets: [
-        { label: 'Input',        data: dates.map(d => mData[d]?.input       || 0), backgroundColor: tc.input,       ...seg },
-        { label: 'Cache Read',   data: dates.map(d => mData[d]?.cacheRead   || 0), backgroundColor: tc.cacheRead,   ...seg },
-        { label: 'Cache Create', data: dates.map(d => mData[d]?.cacheCreate || 0), backgroundColor: tc.cacheCreate, ...seg },
-        { label: 'Output',       data: dates.map(d => mData[d]?.output      || 0), backgroundColor: tc.output,      ...seg },
-      ],
+      datasets: isCost
+        ? [{ label: 'Estimated Cost', data: dates.map(d => costOf(mData[d], model)), backgroundColor: modelColor(model), ...seg }]
+        : [
+          { label: 'Input',        data: dates.map(d => mData[d]?.input       || 0), backgroundColor: tc.input,       ...seg },
+          { label: 'Cache Read',   data: dates.map(d => mData[d]?.cacheRead   || 0), backgroundColor: tc.cacheRead,   ...seg },
+          { label: 'Cache Create', data: dates.map(d => mData[d]?.cacheCreate || 0), backgroundColor: tc.cacheCreate, ...seg },
+          { label: 'Output',       data: dates.map(d => mData[d]?.output      || 0), backgroundColor: tc.output,      ...seg },
+        ],
     },
     options: {
       responsive: true,
@@ -1114,14 +1138,14 @@ function renderModelDrill(model) {
         legend: legendOpts(),
         tooltip: tooltipOpts({
           callbacks: {
-            label: c => ` ${c.dataset.label}: ${fmt(c.raw)}`,
-            footer: items => `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
+            label: c => ` ${c.dataset.label}: ${isCost ? fmtUSD(c.raw) : fmt(c.raw)}`,
+            footer: items => `Total: ${isCost ? fmtUSD(items.reduce((s, i) => s + i.raw, 0)) : fmt(items.reduce((s, i) => s + i.raw, 0))}`,
           },
         }),
       },
       scales: {
         x: { ...xAxis(), stacked: true },
-        y: { ...yAxis(), stacked: true },
+        y: { ...metricAxis(), stacked: true },
       },
     },
   });
@@ -1424,6 +1448,16 @@ function setSourceViewTabs() {
   btns.forEach(b => b.classList.toggle('active', b.dataset.view === view));
 }
 
+function setMetricTabs() {
+  const metricTabs = document.getElementById('metric-tabs');
+  metricTabs.style.display = source === 'combined' || drill ? 'none' : 'flex';
+  metricTabs.querySelectorAll('button[data-metric]').forEach(b => {
+    const active = b.dataset.metric === metric;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
+}
+
 function updateNav() {
   const tabs = document.getElementById('tabs');
   const bc   = document.getElementById('breadcrumb');
@@ -1439,6 +1473,7 @@ function updateNav() {
     tabs.style.display = 'flex';
     bc.style.display   = 'none';
   }
+  setMetricTabs();
 }
 
 // ---- Empty state ----
@@ -1610,6 +1645,16 @@ function init() {
     document.querySelectorAll('#tabs button').forEach(b =>
       b.classList.toggle('active', b.dataset.view === view));
     updateNav();
+    renderView();
+  });
+
+  // Toggle the graph between comparable token counts and the day-stamped
+  // estimated API cost that already backs the tables and totals.
+  document.getElementById('metric-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-metric]');
+    if (!btn || btn.dataset.metric === metric) return;
+    metric = btn.dataset.metric;
+    setMetricTabs();
     renderView();
   });
 

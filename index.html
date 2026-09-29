@@ -342,12 +342,12 @@
 <div class="main">
   <div class="controls" id="controls">
     <div class="tab-group" id="tabs">
-      <button class="active" data-view="models">By Model</button>
-      <button data-view="timeline">By Date</button>
+      <button data-view="models">By Model</button>
+      <button class="active" data-view="timeline">By Date</button>
     </div>
     <div class="tab-group" id="metric-tabs" aria-label="Chart metric">
-      <button class="active" data-metric="tokens" aria-pressed="true">Tokens</button>
-      <button data-metric="cost" aria-pressed="false">$ Spent</button>
+      <button data-metric="tokens" aria-pressed="false">Tokens</button>
+      <button class="active" data-metric="cost" aria-pressed="true">$ Spent</button>
     </div>
     <div id="breadcrumb" style="display:none; align-items:center; gap:10px;">
       <button class="back-btn" id="back-btn">&#8592; Back</button>
@@ -562,8 +562,8 @@ const SOURCES = {
 let chart = null;
 let summary = null;
 let source = 'codex';
-let view = 'models';
-let metric = 'tokens';
+let view = 'timeline';
+let metric = 'cost';
 let drill = null;
 let lastFetchedAt = null;
 let combinedDaily = null;

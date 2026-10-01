@@ -32,6 +32,16 @@ def _rates_for(day, model):
     return None
 
 
+def _cache_read_mult(model):
+    """Longest-prefix per-model override of cache_read_multiplier."""
+    ov = _cfg.get("cache_read_multiplier_overrides", {})
+    best = None
+    for prefix, m in ov.items():
+        if model.startswith(prefix) and (best is None or len(prefix) > len(best[0])):
+            best = (prefix, m)
+    return best[1] if best else _cfg["cache_read_multiplier"]
+
+
 def cost_for(day, model, uncached, cache_read, cc_5m, cc_1h, output):
     """Estimated cost in dollars for one day/model bucket; None if the model
     has no published rate (the page falls back to its own estimate)."""
@@ -41,7 +51,7 @@ def cost_for(day, model, uncached, cache_read, cc_5m, cc_1h, output):
     inp, out = r
     cost = (
         uncached * inp
-        + cache_read * inp * _cfg["cache_read_multiplier"]
+        + cache_read * inp * _cache_read_mult(model)
         + cc_5m * inp * _cfg["cache_write_5m_multiplier"]
         + cc_1h * inp * _cfg["cache_write_1h_multiplier"]
         + output * out

@@ -319,9 +319,9 @@
     </div>
     <div class="header-right">
       <div class="source-tabs" id="source-tabs">
-        <button data-source="subscription">Claude Code</button>
+        <button data-source="subscription" class="active">Claude Code</button>
         <button data-source="claudeai">claude.ai</button>
-        <button data-source="codex" class="active">Codex</button>
+        <button data-source="codex">Codex</button>
         <button data-source="api">API</button>
         <button data-source="combined">Combined</button>
       </div>
@@ -380,15 +380,19 @@
 <script>
 // ---- Palette (validated categorical slots, light + dark) ----
 
-const SERIES_LIGHT = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7','#e34948'];
-const SERIES_DARK  = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
+const SERIES_LIGHT = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7','#e34948','#00a3c4','#a0522d','#7a8b00','#c026d3'];
+const SERIES_DARK  = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767','#2dbad4','#c8794a','#a3b52a','#d968e8'];
 
 // Fixed slot per model family, so a model keeps its color across views,
 // sources, and data refreshes. Unknown models take the next free slot.
 const MODEL_SLOTS = [
+  ['claude-fable-5-1', 8], ['claude-mythos-5-1', 8],
   ['claude-fable-5',   0], ['claude-mythos', 0],
   ['claude-opus-4-8',  1],
+  ['claude-opus-5-5',  9],
+  ['claude-opus-5-1', 10],
   ['claude-opus-5',    2],
+  ['claude-sonnet-5-5',11],
   ['claude-sonnet-5',  3],
   ['claude-sonnet-4-6',4],
   ['claude-haiku-4-5', 5],
@@ -441,14 +445,18 @@ function theme() {
 // Longest/most specific prefixes first. Cache reads bill at 10% of the
 // input rate; cache writes at 1.25x (5-minute TTL) or 2x (1-hour TTL).
 const PRICING = [
+  ['claude-fable-5-1', 10, 50],
+  ['claude-mythos-5-1',10, 50],
   ['claude-fable-5',   10, 50],
   ['claude-mythos',    10, 50],
+  ['claude-opus-5-5',   4, 20],
   ['claude-opus-5',     5, 25],
   ['claude-opus-4-8',   5, 25],
   ['claude-opus-4-7',   5, 25],
   ['claude-opus-4-6',   5, 25],
   ['claude-opus-4-5',   5, 25],
-  ['claude-sonnet-5',   3, 15],
+  ['claude-sonnet-5-5', 2, 10],
+  ['claude-sonnet-5',   2, 10],
   ['claude-sonnet-4',   3, 15],
   ['claude-haiku-4-5',  1,  5],
   ['claude-ai-chat',    3, 15],  // estimated chat volume, assumed Sonnet rates
@@ -476,6 +484,13 @@ function priceFor(model) {
   return null;
 }
 
+// Cache hits bill at 0.1x input, except Fable/Mythos 5.1 (0.025x) and Opus 5.5 (0.05x).
+function cacheReadMult(model) {
+  if (/^claude-(fable|mythos)-5-1/.test(model)) return 0.025;
+  if (model.startsWith('claude-opus-5-5')) return 0.05;
+  return 0.1;
+}
+
 function costOf(record, model) {
   if (!record) return 0;
   if (record.estCost != null) return record.estCost;
@@ -483,7 +498,7 @@ function costOf(record, model) {
   if (!p) return 0;
   return (
     (record.input     || 0) * p.inp +
-    (record.cacheRead || 0) * p.inp * 0.1 +
+    (record.cacheRead || 0) * p.inp * cacheReadMult(model) +
     (record.cc5m      || 0) * p.inp * 1.25 +
     (record.cc1h      || 0) * p.inp * 2 +
     (record.output    || 0) * p.out
@@ -561,7 +576,7 @@ const SOURCES = {
 
 let chart = null;
 let summary = null;
-let source = 'codex';
+let source = 'subscription';
 let view = 'timeline';
 let metric = 'cost';
 let drill = null;
@@ -589,7 +604,7 @@ function sumRecord(r) {
 }
 
 function modelColor(model) {
-  return seriesPalette()[summary.slotOf[model] % 8];
+  return seriesPalette()[summary.slotOf[model] % seriesPalette().length];
 }
 
 // ---- Parse API response ----
@@ -601,15 +616,16 @@ function assignSlots(models) {
     const hit = MODEL_SLOTS.find(([prefix]) => m.startsWith(prefix));
     if (hit && !taken.has(hit[1])) { slotOf[m] = hit[1]; taken.add(hit[1]); }
   }
+  const N = seriesPalette().length;
   let next = 0;
   for (const m of models) {
     if (slotOf[m] !== undefined) continue;
-    // All 8 palette slots can be taken (the Codex tab has 10+ models);
+    // All palette slots can be taken (the Codex tab has 10+ models);
     // once exhausted, colors repeat instead of searching forever.
     let guard = 0;
-    while (taken.has(next % 8) && guard < 8) { next++; guard++; }
-    slotOf[m] = next % 8;
-    taken.add(next % 8);
+    while (taken.has(next % N) && guard < N) { next++; guard++; }
+    slotOf[m] = next % N;
+    taken.add(next % N);
     next++;
   }
   return slotOf;

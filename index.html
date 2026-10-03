@@ -799,7 +799,7 @@ function renderView() {
 
 // ---- Table sorting ----
 // Every table ends with an Est. Cost column; that's the default sort,
-// descending. Click any header to sort by it; click again to flip.
+// descending (except Date/Month tables, which default to newest first). Click any header to sort by it; click again to flip.
 
 let tableSort = null;
 
@@ -842,8 +842,11 @@ function attachTableSort() {
       sortMainTable(i, dir);
     });
   });
+  // Date/Month tables open newest-first; everything else by cost.
+  const firstHead = ths[0].textContent.trim();
   const costIdx = ths.findIndex(th => th.textContent.trim().startsWith('Est. Cost'));
-  if (costIdx >= 0) sortMainTable(costIdx, 'desc');
+  if (firstHead === 'Date' || firstHead === 'Month') sortMainTable(0, 'desc');
+  else if (costIdx >= 0) sortMainTable(costIdx, 'desc');
   else tableSort = null;
 }
 
@@ -969,19 +972,34 @@ function renderTimeline() {
   const t = theme();
 
   const datasets = isCost
-    ? [{
-      label: 'Estimated Cost',
-      data: dates.map(date => models_sorted.reduce((sum, model) => sum + costOf(byDate[date]?.[model], model), 0)),
-      borderColor: seriesPalette()[1],
-      backgroundColor: seriesPalette()[1],
-      borderWidth: 2.5,
-      pointRadius: 3,
-      pointHoverRadius: 5,
-      pointBackgroundColor: t.surface,
-      pointBorderWidth: 2,
-      tension: 0.25,
-      fill: false,
-    }]
+    ? [
+      ...models_sorted.map(model => ({
+        label: model,
+        data: dates.map(date => byDate[date]?.[model] ? costOf(byDate[date][model], model) : null),
+        borderColor: modelColor(model),
+        backgroundColor: modelColor(model),
+        borderWidth: 1.75,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        tension: 0.25,
+        spanGaps: false,
+        fill: false,
+      })),
+      {
+        label: 'Total',
+        data: dates.map(date => models_sorted.reduce((sum, model) => sum + costOf(byDate[date]?.[model], model), 0)),
+        borderColor: t.ink,
+        backgroundColor: t.ink,
+        borderWidth: 2.5,
+        borderDash: [6, 4],
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: t.surface,
+        pointBorderWidth: 2,
+        tension: 0.25,
+        fill: false,
+      },
+    ]
     : models_sorted.map(model => ({
       label: model,
       data: dates.map(date => sumRecord(byDate[date]?.[model])),
@@ -1004,7 +1022,7 @@ function renderTimeline() {
         tooltip: tooltipOpts({
           callbacks: {
             label: c => ` ${c.dataset.label}: ${isCost ? fmtUSD(c.raw) : fmt(c.raw)}`,
-            footer: items => `Total: ${isCost ? fmtUSD(items.reduce((s, i) => s + i.raw, 0)) : fmt(items.reduce((s, i) => s + i.raw, 0))}`,
+            footer: items => isCost ? '' : `Total: ${fmt(items.reduce((s, i) => s + i.raw, 0))}`,
           },
         }),
       },

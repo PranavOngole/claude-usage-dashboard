@@ -12,13 +12,31 @@ from pathlib import Path
 
 PRICING_PATH = Path(__file__).resolve().parent.parent / "data" / "pricing.json"
 
-_cfg = json.load(open(PRICING_PATH))
-# Newest first, so the first period at-or-before the day wins.
-_periods = sorted(_cfg["periods"], key=lambda p: p["effective_from"], reverse=True)
+_cfg = {}
+_periods = []
+_mtime = None
+
+
+def _load():
+    """(Re)load pricing.json when it changes on disk, so long-running
+    processes (the live tracker) never keep pricing stale rates."""
+    global _cfg, _periods, _mtime
+    m = PRICING_PATH.stat().st_mtime
+    if m == _mtime:
+        return
+    with open(PRICING_PATH) as f:
+        _cfg = json.load(f)
+    # Newest first, so the first period at-or-before the day wins.
+    _periods = sorted(_cfg["periods"], key=lambda p: p["effective_from"], reverse=True)
+    _mtime = m
+
+
+_load()
 
 
 def _rates_for(day, model):
     """Return [input, output] $/M for the period covering `day` (YYYY-MM-DD)."""
+    _load()
     for period in _periods:
         if period["effective_from"] <= day:
             rates = period["rates"]

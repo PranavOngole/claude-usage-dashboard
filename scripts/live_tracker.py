@@ -30,7 +30,7 @@ class _BaseLiveTracker:
         self._lock = threading.Lock()
         self._day = None
         self._offsets = {}
-        self._seen = set()
+        self._seen = {}
         self._by_model = {}
         self._files = []
         self._file_state = {}   # per-file parser state, e.g. Codex's current model
@@ -56,7 +56,7 @@ class _BaseLiveTracker:
     def _reset_day(self, day):
         self._day = day
         self._offsets = {}
-        self._seen = set()
+        self._seen = {}
         self._by_model = {}
         self._files = []
         self._file_state = {}
@@ -117,19 +117,25 @@ class _BaseLiveTracker:
                 continue
             if when.date().isoformat() != self._day:
                 continue
-            if key is not None:
-                if key in self._seen:
-                    continue
-                self._seen.add(key)
             b = self._by_model.setdefault(
                 model or "unknown",
                 {"uncached": 0, "cache_read": 0, "cc5m": 0, "cc1h": 0, "output": 0},
             )
-            b["uncached"] += usage.get("uncached", 0)
-            b["cache_read"] += usage.get("cache_read", 0)
-            b["cc5m"] += usage.get("cc5m", 0)
-            b["cc1h"] += usage.get("cc1h", 0)
-            b["output"] += usage.get("output", 0)
+            if key is not None:
+                # Streaming logs the same message repeatedly with growing
+                # output_tokens; keep the largest copy by swapping out the
+                # earlier contribution instead of ignoring repeats.
+                prev = self._seen.get(key)
+                if prev is not None:
+                    prev_model, prev_usage = prev
+                    if usage.get("output", 0) <= prev_usage.get("output", 0):
+                        continue
+                    pb = self._by_model[prev_model]
+                    for k in pb:
+                        pb[k] -= prev_usage.get(k, 0)
+                self._seen[key] = (model or "unknown", usage)
+            for k in b:
+                b[k] += usage.get(k, 0)
 
     def snapshot(self):
         with self._lock:

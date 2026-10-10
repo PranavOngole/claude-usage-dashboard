@@ -23,7 +23,14 @@ MAX_DAYS = 90
 
 
 def iter_usage_records():
-    seen = set()
+    """Yield (timestamp, model, usage) once per API message.
+
+    Claude Code logs the same message (same id + requestId) several times
+    while it streams, with output_tokens growing on each line. Keeping the
+    first copy undercounts output by roughly a third, so keep the copy with
+    the highest output_tokens (the final one). Input and cache fields are
+    identical across copies."""
+    best = {}
     for path in PROJECTS_DIR.rglob("*.jsonl"):
         try:
             with open(path, "r", errors="replace") as f:
@@ -42,16 +49,16 @@ def iter_usage_records():
                     model = msg.get("model") or "unknown"
                     if not usage or not ts or model.startswith("<"):
                         continue
-                    # The same message can appear in multiple files when a
-                    # session is resumed or forked; count it once.
                     key = (msg.get("id"), entry.get("requestId"))
-                    if key != (None, None):
-                        if key in seen:
-                            continue
-                        seen.add(key)
-                    yield ts, model, usage
+                    if key == (None, None):
+                        yield ts, model, usage
+                        continue
+                    prev = best.get(key)
+                    if prev is None or (usage.get("output_tokens") or 0) > (prev[2].get("output_tokens") or 0):
+                        best[key] = (ts, model, usage)
         except OSError:
             continue
+    yield from best.values()
 
 
 def bucket_total(bucket):

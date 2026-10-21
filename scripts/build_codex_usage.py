@@ -18,6 +18,7 @@ history (same guard as the Claude builder).
 
 import json
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,10 +103,16 @@ def bucket_total(bucket):
 
 
 def merge_with_published(fresh):
+    # An unreadable published file stops the build instead of publishing
+    # the recount alone (see build_subscription_usage.merge_with_published).
     try:
-        published = json.load(open(OUTPUT_PATH)).get("data", [])
-    except (OSError, json.JSONDecodeError):
+        with open(OUTPUT_PATH) as f:
+            published = json.load(f).get("data", [])
+    except FileNotFoundError:
         return fresh
+    except json.JSONDecodeError as e:
+        sys.exit(f"ERROR: {OUTPUT_PATH} is not valid JSON ({e}). Refusing to "
+                 f"overwrite history; restore it with git checkout HEAD -- {OUTPUT_PATH}.")
     by_day = {b["starting_at"][:10]: b for b in published}
     for b in fresh:
         day = b["starting_at"][:10]

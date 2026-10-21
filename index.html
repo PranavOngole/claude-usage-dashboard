@@ -653,6 +653,7 @@ function parseData(raw) {
         cc5m:        cc.ephemeral_5m_input_tokens || 0,
         cc1h:        cc.ephemeral_1h_input_tokens || 0,
         output:      r.output_tokens || 0,
+        imputed:     r.imputed_output_tokens || 0,  // estimated part of output
         // Point-in-time cost stamped at build time with the rates in
         // effect on this day (data/pricing.json). Rate changes never
         // re-price stamped history.
@@ -1467,6 +1468,10 @@ function renderRatesNote() {
     const p = priceFor(m);
     return p ? `${m}: $${p.inp} in / $${p.out} out` : `${m}: rate unknown`;
   });
+  let imputed = 0, output = 0;
+  for (const day of Object.values(summary.byDate)) {
+    for (const r of Object.values(day)) { imputed += r.imputed; output += r.output; }
+  }
   setRatesNote(
     `Est. cost at standard API list prices per 1M tokens (${used.join(' &middot; ')}). ` +
     `Cache reads bill at 10% of the input rate (5% on Opus 5.5, 2.5% on Fable 5.1); cache writes at 1.25x (5-min TTL) or 2x (1-hour TTL). ` +
@@ -1476,6 +1481,9 @@ function renderRatesNote() {
       : '') +
     (summary.models.some(m => m.startsWith('gpt-') || m.startsWith('codex-'))
       ? ` Codex models are priced at OpenAI list rates: cached input bills at 10% of the input rate, no cache-write premium, reasoning billed as output. codex-auto-review and unlisted models use assumed codex rates.`
+      : '') +
+    (imputed > 0
+      ? ` ${fmt(imputed)} of ${fmt(output)} output tokens are estimated: Claude Code 2.1.284 to 2.1.286 often logged a message without its final output count, so those messages count their visible text times the output-per-character rate measured on the same model's complete messages (thinking included).`
       : '')
   );
 }

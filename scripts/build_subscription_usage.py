@@ -11,25 +11,59 @@ same code.
 import json
 import os
 import sys
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pricing
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "data" / "subscription_usage.json"
-MAX_DAYS = 90
+
+
+def visible_chars(msg):
+    """Characters of text and tool input in one logged copy of a message."""
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return 0
+    n = 0
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "text":
+            n += len(block.get("text") or "")
+        elif block.get("type") == "tool_use":
+            n += len(json.dumps(block.get("input") or {}))
+    return n
+
+
+def estimated_output(recorded, chars, final, ratio):
+    """Output tokens to count for one message.
+
+    The API's final usage for a message carries `iterations`; until it
+    arrives, Claude Code's copies hold the placeholder count from the start
+    of the stream (a handful of tokens). Claude Code 2.1.284 to 2.1.286
+    often never logged the final copy. When no copy is final and the
+    recorded count cannot even cover the message's visible text (~4
+    chars/token), estimate it as visible chars x the model's output per
+    visible char on finalized messages (thinking included). Tested on
+    held-out finalized messages, the estimate's total landed within 6% of
+    the actual total for every model with a real gap (2026-10-20)."""
+    if final or ratio is None or recorded >= chars / 4:
+        return recorded
+    return max(recorded, round(chars * ratio))
 
 
 def iter_usage_records():
-    """Yield (timestamp, model, usage) once per API message.
+    """Yield (timestamp, model, usage, visible_chars, final) once per API
+    message.
 
-    Claude Code logs the same message (same id + requestId) several times
-    while it streams, with output_tokens growing on each line. Keeping the
-    first copy undercounts output by roughly a third, so keep the copy with
-    the highest output_tokens (the final one). Input and cache fields are
-    identical across copies."""
+    Claude Code logs the same message (same id + requestId) once per
+    content block while it streams, with output_tokens growing on each
+    line. Keeping the first copy undercounts output by roughly a third, so
+    keep the copy with the highest output_tokens (the final one). Input and
+    cache fields are identical across copies. Each copy holds a different
+    block, so visible text is summed over distinct lines."""
     best = {}
     for path in PROJECTS_DIR.rglob("*.jsonl"):
         try:
@@ -49,19 +83,42 @@ def iter_usage_records():
                     model = msg.get("model") or "unknown"
                     if not usage or not ts or model.startswith("<"):
                         continue
+                    chars = visible_chars(msg)
+                    final = "iterations" in usage
                     key = (msg.get("id"), entry.get("requestId"))
                     if key == (None, None):
-                        yield ts, model, usage
+                        yield ts, model, usage, chars, final
                         continue
-                    prev = best.get(key)
-                    if prev is None or (usage.get("output_tokens") or 0) > (prev[2].get("output_tokens") or 0):
-                        best[key] = (ts, model, usage)
+                    rec = best.get(key)
+                    if rec is None:
+                        best[key] = rec = {"ts": ts, "model": model, "usage": usage,
+                                           "chars": 0, "final": False, "lines": set()}
+                    elif (usage.get("output_tokens") or 0) > (rec["usage"].get("output_tokens") or 0):
+                        rec.update(ts=ts, model=model, usage=usage)
+                    uid = entry.get("uuid")
+                    if uid is None or uid not in rec["lines"]:
+                        rec["lines"].add(uid)
+                        rec["chars"] += chars
+                    rec["final"] = rec["final"] or final
         except OSError:
             continue
-    yield from best.values()
+    for rec in best.values():
+        yield rec["ts"], rec["model"], rec["usage"], rec["chars"], rec["final"]
+
+
+def output_ratios(records):
+    """Per-model output tokens per visible char over finalized messages."""
+    out, chars = Counter(), Counter()
+    for _, model, usage, n, final in records:
+        if final and n > 0:
+            out[model] += usage.get("output_tokens") or 0
+            chars[model] += n
+    return {m: round(out[m] / chars[m], 4) for m in chars}
 
 
 def bucket_total(bucket):
+    """Measured tokens in a day bucket (estimated output excluded, so the
+    merge below compares what the transcripts actually recorded)."""
     total = 0
     for r in bucket.get("results", []):
         cc = r.get("cache_creation") or {}
@@ -69,6 +126,7 @@ def bucket_total(bucket):
             (r.get("uncached_input_tokens") or 0)
             + (r.get("cache_read_input_tokens") or 0)
             + (r.get("output_tokens") or 0)
+            - (r.get("imputed_output_tokens") or 0)
             + (cc.get("ephemeral_1h_input_tokens") or 0)
             + (cc.get("ephemeral_5m_input_tokens") or 0)
         )
@@ -81,11 +139,19 @@ def merge_with_published(fresh):
     recount with the previously published file: per day, keep whichever side
     counted more tokens. Dedup means a recount never overcounts, so the
     bigger number is always the more complete one.
+
+    An unreadable published file stops the build: falling back to the
+    recount alone is how 2026-10-01 published a file missing 13 days (a git
+    autostash conflict had left markers in it).
     """
     try:
-        published = json.load(open(OUTPUT_PATH)).get("data", [])
-    except (OSError, json.JSONDecodeError):
+        with open(OUTPUT_PATH) as f:
+            published = json.load(f).get("data", [])
+    except FileNotFoundError:
         return fresh
+    except json.JSONDecodeError as e:
+        sys.exit(f"ERROR: {OUTPUT_PATH} is not valid JSON ({e}). Refusing to "
+                 f"overwrite history; restore it with git checkout HEAD -- {OUTPUT_PATH}.")
     by_day = {b["starting_at"][:10]: b for b in published}
     for b in fresh:
         day = b["starting_at"][:10]
@@ -99,30 +165,31 @@ def main():
         print(f"ERROR: {PROJECTS_DIR} not found.", file=sys.stderr)
         sys.exit(1)
 
-    cutoff = (datetime.now().astimezone() - timedelta(days=MAX_DAYS)).date()
+    # Every day the transcripts still cover is recounted, so fixes to the
+    # counting reach old days too; the merge keeps whichever side is fuller.
+    records = list(iter_usage_records())
+    ratios = output_ratios(records)
     days = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    records = 0
 
-    for ts, model, usage in iter_usage_records():
+    for ts, model, usage, chars, final in records:
         try:
             when = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone()
         except ValueError:
             continue
-        day = when.date()
-        if day < cutoff:
-            continue
         cc = usage.get("cache_creation") or {}
-        bucket = days[day.isoformat()][model]
+        recorded = usage.get("output_tokens") or 0
+        output = estimated_output(recorded, chars, final, ratios.get(model))
+        bucket = days[when.date().isoformat()][model]
         bucket["uncached_input_tokens"] += usage.get("input_tokens") or 0
         bucket["cache_read_input_tokens"] += usage.get("cache_read_input_tokens") or 0
-        bucket["output_tokens"] += usage.get("output_tokens") or 0
+        bucket["output_tokens"] += output
+        bucket["imputed_output_tokens"] += output - recorded
         bucket["ephemeral_1h_input_tokens"] += cc.get("ephemeral_1h_input_tokens") or 0
         bucket["ephemeral_5m_input_tokens"] += (
             cc.get("ephemeral_5m_input_tokens")
             if cc
             else (usage.get("cache_creation_input_tokens") or 0)
         ) or 0
-        records += 1
 
     data = []
     for day in sorted(days):
@@ -138,6 +205,7 @@ def main():
                     "ephemeral_5m_input_tokens": b["ephemeral_5m_input_tokens"],
                 },
                 "output_tokens": b["output_tokens"],
+                "imputed_output_tokens": b["imputed_output_tokens"],
             })
         data.append({"starting_at": f"{day}T00:00:00Z", "results": results})
 
@@ -149,6 +217,8 @@ def main():
     output = {
         "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": "claude-code-local",
+        # Read by the live tracker so today's tile estimates the same way.
+        "output_per_visible_char": ratios,
         "data": data,
     }
 
@@ -156,7 +226,7 @@ def main():
     with open(OUTPUT_PATH, "w") as f:
         json.dump(output, f)
 
-    print(f"Aggregated {records} messages into {len(data)} days -> {OUTPUT_PATH}")
+    print(f"Aggregated {len(records)} messages into {len(data)} days -> {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":

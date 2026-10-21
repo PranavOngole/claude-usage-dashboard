@@ -4,6 +4,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The wrapper's `git pull --autostash` replays data files left modified by
+# mode=local rebuilds, and git cannot merge one-line JSON: on 2026-10-01 a
+# conflict left markers in subscription_usage.json and the build published
+# a bare recount that erased 13 days. These files are derived (each build
+# merges a fresh recount into the committed copy), so start from HEAD.
+git checkout HEAD -- data/subscription_usage.json data/claudeai_usage.json data/codex_usage.json
+
 python3 scripts/build_subscription_usage.py
 python3 scripts/build_claudeai_usage.py
 python3 scripts/build_codex_usage.py

@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pricing
+from build_subscription_usage import OUTPUT_PATH, estimated_output, visible_chars
 
 LISTING_INTERVAL = 30.0   # how often to look for new session files
 REFRESH_INTERVAL = 0.8    # minimum seconds between file tail reads
@@ -50,6 +51,10 @@ class _BaseLiveTracker:
         dedupe_key may be None to skip dedup for that event. usage_delta
         keys: uncached, cache_read, cc5m, cc1h, output."""
         raise NotImplementedError
+
+    def _supersedes(self, usage, prev_usage):
+        """Whether a repeat of an already-counted event replaces it."""
+        return usage.get("output", 0) > prev_usage.get("output", 0)
 
     # ---- shared tailing machinery ----
 
@@ -123,12 +128,12 @@ class _BaseLiveTracker:
             )
             if key is not None:
                 # Streaming logs the same message repeatedly with growing
-                # output_tokens; keep the largest copy by swapping out the
-                # earlier contribution instead of ignoring repeats.
+                # output_tokens; keep the copy _supersedes picks by swapping
+                # out the earlier contribution instead of ignoring repeats.
                 prev = self._seen.get(key)
                 if prev is not None:
                     prev_model, prev_usage = prev
-                    if usage.get("output", 0) <= prev_usage.get("output", 0):
+                    if not self._supersedes(usage, prev_usage):
                         continue
                     pb = self._by_model[prev_model]
                     for k in pb:
@@ -182,13 +187,38 @@ class _BaseLiveTracker:
 
 
 class ClaudeLiveTracker(_BaseLiveTracker):
-    """Tails ~/.claude/projects/**/*.jsonl. Dedup matches the subscription
-    builder: (message.id, requestId) counted once."""
+    """Tails ~/.claude/projects/**/*.jsonl. Dedup and output estimation
+    match the subscription builder: (message.id, requestId) counted once,
+    and a message whose final usage was never logged gets its output
+    estimated with the ratios the last build measured."""
+
+    def __init__(self):
+        super().__init__()
+        self._ratios = {}
+        self._ratios_mtime = None
 
     def _session_dirs(self):
         return [Path.home() / ".claude" / "projects"]
 
+    def _load_ratios(self):
+        try:
+            m = OUTPUT_PATH.stat().st_mtime
+            if m != self._ratios_mtime:
+                with open(OUTPUT_PATH) as f:
+                    self._ratios = json.load(f).get("output_per_visible_char") or {}
+                self._ratios_mtime = m
+        except (OSError, json.JSONDecodeError):
+            pass
+        return self._ratios
+
+    def _supersedes(self, usage, prev_usage):
+        # Each event carries the whole message so far, and a final count
+        # can be lower than an earlier estimate, so the latest always wins.
+        return True
+
     def _parse_chunk(self, state, complete_bytes):
+        ratios = self._load_ratios()
+        msgs = state.setdefault("msgs", {})
         for raw in complete_bytes.splitlines():
             if b'"usage"' not in raw:
                 continue
@@ -205,9 +235,21 @@ class ClaudeLiveTracker(_BaseLiveTracker):
             if not usage or not ts or model.startswith("<"):
                 continue
             cc = usage.get("cache_creation") or {}
+            out = usage.get("output_tokens") or 0
+            chars = visible_chars(msg)
+            final = "iterations" in usage
             key = (msg.get("id"), entry.get("requestId"))
             if key == (None, None):
                 key = None
+            else:
+                # One content block per line: carry the message's largest
+                # output count, its visible text and whether a final copy
+                # has arrived (same file; messages never span files).
+                m = msgs.setdefault(key, [0, 0, False])
+                m[0] = max(m[0], out)
+                m[1] += chars
+                m[2] = m[2] or final
+                out, chars, final = m
             yield key, ts, model, {
                 "uncached": usage.get("input_tokens") or 0,
                 "cache_read": usage.get("cache_read_input_tokens") or 0,
@@ -217,7 +259,7 @@ class ClaudeLiveTracker(_BaseLiveTracker):
                     if cc
                     else (usage.get("cache_creation_input_tokens") or 0)
                 ) or 0,
-                "output": usage.get("output_tokens") or 0,
+                "output": estimated_output(out, chars, final, ratios.get(model)),
             }
 
 

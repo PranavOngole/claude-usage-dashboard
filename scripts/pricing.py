@@ -50,9 +50,15 @@ def _rates_for(day, model):
     return None
 
 
-def _cache_read_mult(model):
-    """Longest-prefix per-model override of cache_read_multiplier."""
-    ov = _cfg.get("cache_read_multiplier_overrides", {})
+def _cache_read_mult(day, model):
+    """Longest-prefix per-model override of cache_read_multiplier. A
+    period's own overrides apply from its effective_from on and carry into
+    later periods (Sonnet 5.5 cache reads dropped to 0.05x on 2026-10-07)."""
+    ov = dict(_cfg.get("cache_read_multiplier_overrides", {}))
+    for period in reversed(_periods):
+        if period["effective_from"] > day:
+            break
+        ov.update(period.get("cache_read_multiplier_overrides", {}))
     best = None
     for prefix, m in ov.items():
         if model.startswith(prefix) and (best is None or len(prefix) > len(best[0])):
@@ -69,7 +75,7 @@ def cost_for(day, model, uncached, cache_read, cc_5m, cc_1h, output):
     inp, out = r
     cost = (
         uncached * inp
-        + cache_read * inp * _cache_read_mult(model)
+        + cache_read * inp * _cache_read_mult(day, model)
         + cc_5m * inp * _cfg["cache_write_5m_multiplier"]
         + cc_1h * inp * _cfg["cache_write_1h_multiplier"]
         + output * out

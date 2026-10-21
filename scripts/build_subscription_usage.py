@@ -116,29 +116,34 @@ def output_ratios(records):
     return {m: round(out[m] / chars[m], 4) for m in chars}
 
 
-def bucket_total(bucket):
-    """Measured tokens in a day bucket (estimated output excluded, so the
-    merge below compares what the transcripts actually recorded)."""
-    total = 0
-    for r in bucket.get("results", []):
-        cc = r.get("cache_creation") or {}
-        total += (
-            (r.get("uncached_input_tokens") or 0)
-            + (r.get("cache_read_input_tokens") or 0)
-            + (r.get("output_tokens") or 0)
-            - (r.get("imputed_output_tokens") or 0)
-            + (cc.get("ephemeral_1h_input_tokens") or 0)
-            + (cc.get("ephemeral_5m_input_tokens") or 0)
-        )
-    return total
+def measured_output(row):
+    return (row.get("output_tokens") or 0) - (row.get("imputed_output_tokens") or 0)
+
+
+def merge_rows(pub, new):
+    """One model's day counted twice: keep the larger of each token field.
+    Either count can only fall short (a recount misses deleted transcripts;
+    builds before 2026-10-09 kept each message's first streamed output
+    count), so a whole-day comparison could keep fuller input but older,
+    smaller output (2026-07-07 to 07-09 lost ~$70 that way)."""
+    row = dict(new)
+    for f in ("uncached_input_tokens", "cache_read_input_tokens"):
+        row[f] = max(pub.get(f) or 0, new.get(f) or 0)
+    pc, nc = pub.get("cache_creation") or {}, new.get("cache_creation") or {}
+    row["cache_creation"] = {f: max(pc.get(f) or 0, nc.get(f) or 0)
+                             for f in ("ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens")}
+    if measured_output(pub) > measured_output(new):
+        row["output_tokens"] = pub.get("output_tokens") or 0
+        row["imputed_output_tokens"] = pub.get("imputed_output_tokens") or 0
+    return row
 
 
 def merge_with_published(fresh):
     """Never let history erode. Claude Code deletes old session transcripts
     (retention window), so a pure recount silently loses old days. Merge the
-    recount with the previously published file: per day, keep whichever side
-    counted more tokens. Dedup means a recount never overcounts, so the
-    bigger number is always the more complete one.
+    recount with the previously published file per day and model, field by
+    field (merge_rows). Dedup means no count ever overcounts, so the bigger
+    number is always the more complete one.
 
     An unreadable published file stops the build: falling back to the
     recount alone is how 2026-10-01 published a file missing 13 days (a git
@@ -155,8 +160,11 @@ def merge_with_published(fresh):
     by_day = {b["starting_at"][:10]: b for b in published}
     for b in fresh:
         day = b["starting_at"][:10]
-        if day not in by_day or bucket_total(b) >= bucket_total(by_day[day]):
-            by_day[day] = b
+        old = {r["model"]: r for r in by_day.get(day, {}).get("results", [])}
+        rows = {r["model"]: merge_rows(old.pop(r["model"]), r) if r["model"] in old else r
+                for r in b["results"]}
+        rows.update(old)  # models only the published side still has
+        by_day[day] = {**b, "results": [rows[m] for m in sorted(rows)]}
     return [by_day[d] for d in sorted(by_day)]
 
 

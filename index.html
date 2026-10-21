@@ -441,55 +441,51 @@ function theme() {
     : { ink:'#0b0b0b', ink2:'#52514e', muted:'#898781', grid:'#e1e0d9', surface:'#fcfcfb', tipBg:'#0b0b0b', tipInk:'#fcfcfb' };
 }
 
-// API list prices in $ per million tokens: [model prefix, input, output].
-// Longest/most specific prefixes first. Cache reads bill at 10% of the
-// input rate; cache writes at 1.25x (5-minute TTL) or 2x (1-hour TTL).
-const PRICING = [
-  ['claude-fable-5-1', 10, 50],
-  ['claude-mythos-5-1',10, 50],
-  ['claude-fable-5',   10, 50],
-  ['claude-mythos',    10, 50],
-  ['claude-opus-5-5',   4, 20],
-  ['claude-opus-5',     5, 25],
-  ['claude-opus-4-8',   5, 25],
-  ['claude-opus-4-7',   5, 25],
-  ['claude-opus-4-6',   5, 25],
-  ['claude-opus-4-5',   5, 25],
-  ['claude-sonnet-5-5', 2, 10],
-  ['claude-sonnet-5',   2, 10],
-  ['claude-sonnet-4',   3, 15],
-  ['claude-haiku-4-5',  1,  5],
-  ['claude-ai-chat',    3, 15],  // estimated chat volume, assumed Sonnet rates
-  // OpenAI (Codex CLI) list rates; specific prefixes before the gpt-5 catch-all
-  ['gpt-6-astra',      10, 50],
-  ['gpt-6-sol',          2, 10],
-  ['gpt-6-luna',       0.1, 0.5],
-  ['gpt-5.6-sol',       5, 30],
-  ['gpt-5.6-terra',     2, 12],
-  ['gpt-5.6-luna',    0.2, 1.2],
-  ['gpt-5.5',           5, 30],
-  ['gpt-5.4',         2.5, 15],
-  ['gpt-5.3-codex',  1.75, 14],
-  ['gpt-5.2-codex',  1.75, 14],  // assumed, not on the published price list
-  ['codex-auto-review', 1.75, 14],  // assumed codex rates
-  ['codex-unknown',  1.75, 14],  // sessions with no recorded model, assumed
-  ['gpt-5-mini',     0.25, 2],
-  ['gpt-5',          1.25, 10],
-];
+// Current list prices, for the rate column and for rows the builders could
+// not stamp, read from data/pricing.json so the page cannot drift from the
+// rates the builders use. Stamped rows never use these: est_cost already
+// carries the rate in effect on its day.
+let prices = { rates: {}, cacheRead: 0.1, cacheOverrides: {}, write5m: 1.25, write1h: 2 };
 
-function priceFor(model) {
-  for (const [prefix, inp, out] of PRICING) {
-    if (model.startsWith(prefix)) return { inp, out };
-  }
-  return null;
+async function loadPricing() {
+  try {
+    const resp = await fetch(`data/pricing.json?t=${Date.now()}`);
+    if (!resp.ok) return;
+    const p = await resp.json();
+    const today = localDateKey(new Date());
+    // Period-level cache overrides apply from their date on and carry
+    // forward, the same as scripts/pricing.py.
+    const overrides = { ...(p.cache_read_multiplier_overrides || {}) };
+    let rates = {};
+    for (const period of [...p.periods].sort((x, y) => x.effective_from.localeCompare(y.effective_from))) {
+      if (period.effective_from > today) break;
+      rates = period.rates;
+      Object.assign(overrides, period.cache_read_multiplier_overrides || {});
+    }
+    prices = {
+      rates, cacheRead: p.cache_read_multiplier, cacheOverrides: overrides,
+      write5m: p.cache_write_5m_multiplier, write1h: p.cache_write_1h_multiplier,
+    };
+  } catch {}
 }
 
-// Cache hits bill at 0.1x input, except Fable/Mythos 5.1 (0.025x) and Opus 5.5
-// and Sonnet 5.5 (0.05x; Sonnet 5.5 was 0.1x before 2026-10-07, see pricing.json).
+// Longest matching prefix wins (claude-opus-4-8 over claude-opus-4).
+function longestPrefix(table, model) {
+  let best = null;
+  for (const prefix of Object.keys(table)) {
+    if (model.startsWith(prefix) && (!best || prefix.length > best.length)) best = prefix;
+  }
+  return best;
+}
+
+function priceFor(model) {
+  const k = longestPrefix(prices.rates, model);
+  return k ? { inp: prices.rates[k][0], out: prices.rates[k][1] } : null;
+}
+
 function cacheReadMult(model) {
-  if (/^claude-(fable|mythos)-5-1/.test(model)) return 0.025;
-  if (/^claude-(opus|sonnet)-5-5/.test(model)) return 0.05;
-  return 0.1;
+  const k = longestPrefix(prices.cacheOverrides, model);
+  return k ? prices.cacheOverrides[k] : prices.cacheRead;
 }
 
 function costOf(record, model) {
@@ -500,8 +496,8 @@ function costOf(record, model) {
   return (
     (record.input     || 0) * p.inp +
     (record.cacheRead || 0) * p.inp * cacheReadMult(model) +
-    (record.cc5m      || 0) * p.inp * 1.25 +
-    (record.cc1h      || 0) * p.inp * 2 +
+    (record.cc5m      || 0) * p.inp * prices.write5m +
+    (record.cc1h      || 0) * p.inp * prices.write1h +
     (record.output    || 0) * p.out
   ) / 1e6;
 }
@@ -1473,15 +1469,23 @@ function renderRatesNote() {
   for (const day of Object.values(summary.byDate)) {
     for (const r of Object.values(day)) { imputed += r.imputed; output += r.output; }
   }
+  const pct = x => +(x * 100).toFixed(2);
+  const reads = {};
+  for (const m of summary.models) {
+    const x = cacheReadMult(m);
+    if (x !== prices.cacheRead) (reads[x] ||= []).push(m);
+  }
+  const readNote = Object.entries(reads).map(([x, ms]) => `${pct(x)}% on ${ms.join(', ')}`).join('; ');
   setRatesNote(
-    `Est. cost at standard API list prices per 1M tokens (${used.join(' &middot; ')}). ` +
-    `Cache reads bill at 10% of the input rate (5% on Opus 5.5 and, from Oct 7, 2026, Sonnet 5.5; 2.5% on Fable 5.1); cache writes at 1.25x (5-min TTL) or 2x (1-hour TTL). ` +
+    `Est. cost at standard API list prices per 1M tokens, current rates shown (${used.join(' &middot; ')}). ` +
+    `Cache reads bill at ${pct(prices.cacheRead)}% of the input rate${readNote ? ` (${readNote})` : ''}; ` +
+    `cache writes at ${prices.write5m}x (5-min TTL) or ${prices.write1h}x (1-hour TTL). ` +
     `Costs are stamped per day at the rates in effect on that day (data/pricing.json), so later rate changes never re-price history.` +
     (summary.models.includes('claude-ai-chat')
       ? ` claude-ai-chat is chat volume estimated from your claude.ai export (~4 chars/token, context replayed with cache assumptions), priced at assumed Sonnet rates; thinking tokens, system prompts, and attachments are not included, so treat it as a floor.`
       : '') +
     (summary.models.some(m => m.startsWith('gpt-') || m.startsWith('codex-'))
-      ? ` Codex models are priced at OpenAI list rates: cached input bills at 10% of the input rate, no cache-write premium, reasoning billed as output. codex-auto-review and unlisted models use assumed codex rates.`
+      ? ` Codex models are priced at OpenAI list rates, reasoning billed as output; Codex logs have recorded no cache writes, so no write premium applies. codex-auto-review and unlisted models use assumed codex rates.`
       : '') +
     (imputed > 0
       ? ` ${fmt(imputed)} of ${fmt(output)} output tokens are estimated: Claude Code 2.1.284 to 2.1.286 often logged a message without its final output count, so those messages count their visible text times the output-per-character rate measured on the same model's complete messages (thinking included).`
@@ -1624,6 +1628,7 @@ async function rebuildViaHelper() {
 // ---- Data loading ----
 
 async function loadSource() {
+  await loadPricing();
   if (source === 'combined') return loadCombined();
 
   destroyChart();

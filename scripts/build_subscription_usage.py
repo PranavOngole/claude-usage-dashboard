@@ -218,8 +218,8 @@ def main():
         data.append({"starting_at": f"{day}T00:00:00Z", "results": results})
 
     data = merge_with_published(data)
-    # Stamp point-in-time costs: fresh buckets get priced at the rates in
-    # effect on their day; already-stamped published buckets are untouched.
+    # Stamp point-in-time costs: every bucket is priced at the rates in
+    # effect on its day.
     data = [pricing.stamp_bucket(b) for b in data]
 
     output = {

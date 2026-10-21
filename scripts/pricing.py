@@ -4,7 +4,8 @@ Rates live in data/pricing.json as dated periods. cost_for(day, ...) prices
 a day's usage with the rates in effect ON that day, and the builders stamp
 the result into the data file as est_cost. The page displays the stamp, so
 a future rate change (a new period appended to pricing.json) never
-re-prices history.
+re-prices history, while a correction to a past period (a price cut found
+late) does reach it on the next build.
 """
 
 import json
@@ -84,18 +85,20 @@ def cost_for(day, model, uncached, cache_read, cc_5m, cc_1h, output):
 
 
 def stamp_bucket(bucket):
-    """Add est_cost to every result in a day bucket that lacks one."""
+    """(Re)stamp est_cost on every result in a day bucket. Restamping all
+    rows, not just new ones, is what lets a corrected past period reach
+    days whose source logs are gone (2026-10-21: GPT-5.6 Sol's 8/21 price
+    cut was missing, and those Codex days survive only in the data file)."""
     day = bucket["starting_at"][:10]
     for r in bucket.get("results", []):
-        if r.get("est_cost") is None:
-            cc = r.get("cache_creation") or {}
-            r["est_cost"] = cost_for(
-                day,
-                r.get("model") or "unknown",
-                r.get("uncached_input_tokens") or 0,
-                r.get("cache_read_input_tokens") or 0,
-                cc.get("ephemeral_5m_input_tokens") or 0,
-                cc.get("ephemeral_1h_input_tokens") or 0,
-                r.get("output_tokens") or 0,
-            )
+        cc = r.get("cache_creation") or {}
+        r["est_cost"] = cost_for(
+            day,
+            r.get("model") or "unknown",
+            r.get("uncached_input_tokens") or 0,
+            r.get("cache_read_input_tokens") or 0,
+            cc.get("ephemeral_5m_input_tokens") or 0,
+            cc.get("ephemeral_1h_input_tokens") or 0,
+            r.get("output_tokens") or 0,
+        )
     return bucket

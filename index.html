@@ -550,12 +550,14 @@ const SOURCES = {
     emptyHtml: `
       <h2>No API usage data yet</h2>
       <p>
-        This view reads <code>data/usage.json</code>, which is updated daily
-        by the GitHub Actions workflow. Trigger the workflow manually to populate it now.
+        This view reads <code>data/usage.json</code>, which the daily GitHub Actions
+        workflow fills from Anthropic's usage and cost reports.
       </p>
       <p style="margin-top:12px">
-        Note: this requires an <strong>Admin API key</strong> (<code>sk-ant-admin01-...</code>)
-        set as the <code>ANTHROPIC_ADMIN_KEY</code> repo secret.
+        It needs an <strong>Admin API key</strong> (<code>sk-ant-admin01-...</code>) set as the
+        <code>ANTHROPIC_ADMIN_KEY</code> repo secret. Admin keys exist only for organization
+        accounts: set one up at platform.claude.com/settings/organization, then create the key
+        at platform.claude.com/settings/admin-keys.
       </p>`,
   },
   combined: {
@@ -655,6 +657,7 @@ function parseData(raw) {
         // effect on this day (data/pricing.json). Rate changes never
         // re-price stamped history.
         estCost:     (typeof r.est_cost === 'number') ? r.est_cost : null,
+        costBasis:   r.cost_basis || null,  // API tab: 'billed' or 'list_price'
       };
 
       if (!byDate[date]) byDate[date] = {};
@@ -704,7 +707,7 @@ function renderStats(raw) {
     <div class="stat"><div class="label">Total Tokens</div><div class="val">${fmt(totalAll)}</div></div>
     <div class="stat"><div class="label">Input</div><div class="val">${fmt(totalIn)}</div></div>
     <div class="stat"><div class="label">Output</div><div class="val">${fmt(totalOut)}</div></div>
-    <div class="stat"><div class="label">Est. API Cost</div><div class="val">${fmtUSD(totalCost)}</div></div>
+    <div class="stat"><div class="label">${source === 'api' ? 'Billed API Cost' : 'Est. API Cost'}</div><div class="val">${fmtUSD(totalCost)}</div></div>
     <div class="stat"><div class="label">Models</div><div class="val">${summary.models.length}</div></div>
     <div class="stat"><div class="label">Days</div><div class="val">${summary.dates.length}</div></div>
   `;
@@ -1461,6 +1464,16 @@ function setRatesNote(html) {
 }
 
 function renderRatesNote() {
+  if (source === 'api') {
+    // scripts/fetch_usage.py marks each row billed or list_price.
+    const estimated = summary.dates.flatMap(d => Object.values(summary.byDate[d])).filter(r => r.costBasis === 'list_price').length;
+    setRatesNote(
+      `Costs are what Anthropic billed, from the Admin API cost report (so fast mode, batch, data residency and web search are included), by UTC day; tokens come from the usage report. ` +
+      `Charges that are not tokens (web_search, code_execution, session_usage) show as their own rows.` +
+      (estimated ? ` ${estimated} day/model row(s) are not in the cost report yet and use list prices until the next fetch.` : '')
+    );
+    return;
+  }
   const used = summary.models.map(m => {
     const p = priceFor(m);
     return p ? `${m}: $${p.inp} in / $${p.out} out` : `${m}: rate unknown`;

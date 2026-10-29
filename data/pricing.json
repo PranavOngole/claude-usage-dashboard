@@ -1,5 +1,5 @@
 {
-  "comment": "Point-in-time API list rates, $/M tokens [input, output]. Each period applies from its effective_from date (inclusive) until the next period's date. When Anthropic changes prices, APPEND a new period; never edit an old one. Days are priced with the period in effect on that day, so rate changes never re-price history. Cache multipliers: reads 10% of input rate, 5-min cache writes 1.25x, 1-hour cache writes 2x. Claude Sonnet 5 launched with introductory $2/$10 per M pricing through 2026-08-31, with a scheduled standard-rate increase to $3/$15 on 2026-09-01. As of 2026-08-17, platform.claude.com/docs/en/about-claude/pricing confirms the $2/$10 rate is now the permanent standard price and the scheduled 2026-09-01 increase will not occur; the 2026-09-01 period below was corrected in place to keep claude-sonnet-5 at $2/$10 rather than restating the old planned increase. OpenAI (Codex) rates added 2026-08-11 from developers.openai.com/api/docs/pricing; OpenAI cached input bills at 10% of input (same cache_read_multiplier) and has no cache-write premium (Codex data carries no write tokens). gpt-5.2-codex and codex-auto-review have no published rate and are ASSUMED at gpt-5.3-codex rates. gpt-6-astra is priced at $10/$50 per M tokens from 2026-09-04; gpt-6-sol is priced at $2/$10 and gpt-6-luna at $0.10/$0.50 per M tokens from 2026-09-22, per the OpenAI pricing page. Added 2026-10-01: Fable 5.1 / Mythos 5.1 ($10/$50, cache hits 0.025x), Opus 5.5 ($4/$20, cache hits 0.05x) and Sonnet 5.5 ($2/$10) via a 2026-09-29 period (first day they appear in data) plus cache_read_multiplier_overrides. Opus 5.1 has no published rate; it falls back to the claude-opus-5 prefix if it ever appears. Added 2026-10-05, via a new period (the 2026-09-29 period is frozen history and was not edited): gpt-6.1-sol ($2/$10, launched 2026-09-29 at a fifth of gpt-6-astra's price, per OpenAI's own announcement), gpt-5.1-codex-mini ($0.25/$2, matching the long-standing mini-tier rate) and gpt-5.4-mini ($0.75/$4.50), all previously appearing in usage data unpriced or mispriced under a shorter unrelated prefix. gpt-5.2 and gpt-5.3-codex-spark also appear in usage data with no confidently verifiable published rate (conflicting third-party figures for gpt-5.2; OpenAI never published a rate for the retired gpt-5.3-codex-spark) and are left unpriced rather than guessed. Added 2026-10-12, via a new period: claude-haiku-5-5 ($0.10/$0.50 per M, standard 0.1x cache-hit multiplier, no override needed), a new generally-available model confirmed on platform.claude.com/docs/en/about-claude/pricing. Anthropic publishes a second, higher tier for claude-haiku-5-5 ($0.50/$2.50 per M) that applies only to a request whose prompt exceeds 100,000 tokens; this file's flat [input, output] schema cannot represent that threshold, so the entry below is the base (<=100k token prompt) tier and understates cost on any longer-prompt request. OpenAI/Codex pricing could not be re-verified in this update: developers.openai.com and platform.openai.com were both unreachable (DNS blocked by this environment's network policy), so no gpt-*/codex-* rates were checked or changed this run. Added 2026-10-21, via a new 2026-10-07 period (rates copied from the 2026-10-05 period): Anthropic cut Claude Sonnet 5.5 cache reads from $0.20 to $0.10 per M (0.1x to 0.05x of input) on 2026-10-07, per the platform.claude.com release notes and pricing page. A period may carry its own cache_read_multiplier_overrides; they apply from its effective_from on, carry into every later period, and win over the file-wide overrides, so later periods need not repeat them. Use a period-level override for any future change to a cache-hit multiplier, never an edit of the file-wide one, which would re-price history. Added 2026-10-21 from OpenAI's API changelog and pricing page: GPT-5.6 Sol dropped from $5/$30 to $4/$20 per M on 2026-08-21 (promotional, available at least through 2026-11-21), so a 2026-08-21 period was added and the gpt-5.6-sol entry was corrected in every later period, which had copied the stale rate; nothing else in them changed. GPT-6.1 Sol launched 2026-09-29 at $2/$10 per M with cached input at $0.10 (0.05x), so the 2026-09-29 period gained gpt-6.1-sol and a period-level 0.05x cache-read override (it had left that day's usage unpriced). OpenAI now also bills cache writes (30-minute writes 1.25x input, 12-hour writes 2.5x from 2026-10-20); Codex rollouts carry cache_write_input_tokens, which was 0 in every remaining rollout on 2026-10-21, so no write premium is applied. The earlier note that OpenAI cached input is always 0.1x is superseded by these per-model overrides. Every build re-stamps every row from these periods, so a correction to a past period reaches history. For the same reason gpt-5.4-mini ($0.75/$4.50) and gpt-5.1-codex-mini ($0.25/$2), long-standing models first priced in the 2026-10-05 period, were added to every earlier period; earlier days had fallen to the shorter gpt-5.4 / gpt-5 prefixes (about $0.40 too high, both hidden from the dashboard tabs).",
+  "comment": "Point-in-time API list rates, $/M tokens [input, output]. Each period applies from its effective_from date (inclusive) until the next period's date. When Anthropic changes prices, APPEND a new period; never edit an old one. Days are priced with the period in effect on that day, so rate changes never re-price history. Cache multipliers: reads 10% of input rate, 5-min cache writes 1.25x, 1-hour cache writes 2x. Claude Sonnet 5 launched with introductory $2/$10 per M pricing through 2026-08-31, with a scheduled standard-rate increase to $3/$15 on 2026-09-01. As of 2026-08-17, platform.claude.com/docs/en/about-claude/pricing confirms the $2/$10 rate is now the permanent standard price and the scheduled 2026-09-01 increase will not occur; the 2026-09-01 period below was corrected in place to keep claude-sonnet-5 at $2/$10 rather than restating the old planned increase. OpenAI (Codex) rates added 2026-08-11 from developers.openai.com/api/docs/pricing; OpenAI cached input bills at 10% of input (same cache_read_multiplier) and has no cache-write premium (Codex data carries no write tokens). gpt-5.2-codex and codex-auto-review have no published rate and are ASSUMED at gpt-5.3-codex rates. gpt-6-astra is priced at $10/$50 per M tokens from 2026-09-04; gpt-6-sol is priced at $2/$10 and gpt-6-luna at $0.10/$0.50 per M tokens from 2026-09-22, per the OpenAI pricing page. Added 2026-10-01: Fable 5.1 / Mythos 5.1 ($10/$50, cache hits 0.025x), Opus 5.5 ($4/$20, cache hits 0.05x) and Sonnet 5.5 ($2/$10) via a 2026-09-29 period (first day they appear in data) plus cache_read_multiplier_overrides. Opus 5.1 has no published rate; it falls back to the claude-opus-5 prefix if it ever appears. Added 2026-10-05, via a new period (the 2026-09-29 period is frozen history and was not edited): gpt-6.1-sol ($2/$10, launched 2026-09-29 at a fifth of gpt-6-astra's price, per OpenAI's own announcement), gpt-5.1-codex-mini ($0.25/$2, matching the long-standing mini-tier rate) and gpt-5.4-mini ($0.75/$4.50), all previously appearing in usage data unpriced or mispriced under a shorter unrelated prefix. gpt-5.2 and gpt-5.3-codex-spark also appear in usage data with no confidently verifiable published rate (conflicting third-party figures for gpt-5.2; OpenAI never published a rate for the retired gpt-5.3-codex-spark) and are left unpriced rather than guessed. Added 2026-10-12, via a new period: claude-haiku-5-5 ($0.10/$0.50 per M, standard 0.1x cache-hit multiplier, no override needed), a new generally-available model confirmed on platform.claude.com/docs/en/about-claude/pricing. Anthropic publishes a second, higher tier for claude-haiku-5-5 ($0.50/$2.50 per M) that applies only to a request whose prompt exceeds 100,000 tokens; this file's flat [input, output] schema cannot represent that threshold, so the entry below is the base (<=100k token prompt) tier and understates cost on any longer-prompt request. OpenAI/Codex pricing could not be re-verified in this update: developers.openai.com and platform.openai.com were both unreachable (DNS blocked by this environment's network policy), so no gpt-*/codex-* rates were checked or changed this run. Added 2026-10-21, via a new 2026-10-07 period (rates copied from the 2026-10-05 period): Anthropic cut Claude Sonnet 5.5 cache reads from $0.20 to $0.10 per M (0.1x to 0.05x of input) on 2026-10-07, per the platform.claude.com release notes and pricing page. A period may carry its own cache_read_multiplier_overrides; they apply from its effective_from on, carry into every later period, and win over the file-wide overrides, so later periods need not repeat them. Use a period-level override for any future change to a cache-hit multiplier, never an edit of the file-wide one, which would re-price history. Added 2026-10-21 from OpenAI's API changelog and pricing page: GPT-5.6 Sol dropped from $5/$30 to $4/$20 per M on 2026-08-21 (promotional, available at least through 2026-11-21), so a 2026-08-21 period was added and the gpt-5.6-sol entry was corrected in every later period, which had copied the stale rate; nothing else in them changed. GPT-6.1 Sol launched 2026-09-29 at $2/$10 per M with cached input at $0.10 (0.05x), so the 2026-09-29 period gained gpt-6.1-sol and a period-level 0.05x cache-read override (it had left that day's usage unpriced). OpenAI now also bills cache writes (30-minute writes 1.25x input, 12-hour writes 2.5x from 2026-10-20); Codex rollouts carry cache_write_input_tokens, which was 0 in every remaining rollout on 2026-10-21, so no write premium is applied. The earlier note that OpenAI cached input is always 0.1x is superseded by these per-model overrides. Every build re-stamps every row from these periods, so a correction to a past period reaches history. For the same reason gpt-5.4-mini ($0.75/$4.50) and gpt-5.1-codex-mini ($0.25/$2), long-standing models first priced in the 2026-10-05 period, were added to every earlier period; earlier days had fallen to the shorter gpt-5.4 / gpt-5 prefixes (about $0.40 too high, both hidden from the dashboard tabs). Added 2026-10-28 from OpenAI's API changelog (2026-07-30 entry) and archive.org copies of the pricing page (2026-07-16 and 07-25 before, 2026-08-06 after): GPT-5.6 Terra launched 2026-07-09 at $2.50/$15 per M and GPT-5.6 Luna at $1/$6; on 2026-07-30 Terra dropped 20% to $2/$12 and Luna 80% to $0.20/$1.20. The 2024-01-01 period held only the cut rates, so it now holds the launch rates and a 2026-07-30 period (a copy of it with the cut rates) was added; later periods already carried the cut rates. Effect: 2026-07-09 Terra goes from $1.79 to $2.24; there was no Luna usage before 07-30. Not priced: Codex marks Fast mode (service_tier priority, 2x price) per thread, and 9 GPT-5.6 Terra calls on 2026-09-30 ran in it at standard price here (about $0.79 low); the Codex builder does not read service_tier.",
   "cache_read_multiplier": 0.1,
   "cache_read_multiplier_overrides": {"claude-fable-5-1": 0.025, "claude-mythos-5-1": 0.025, "claude-opus-5-5": 0.05},
   "cache_write_5m_multiplier": 1.25,
@@ -7,6 +7,107 @@
   "periods": [
     {
       "effective_from": "2024-01-01",
+      "rates": {
+        "gpt-5.4-mini": [
+          0.75,
+          4.5
+        ],
+        "gpt-5.1-codex-mini": [
+          0.25,
+          2
+        ],
+        "claude-fable-5": [
+          10,
+          50
+        ],
+        "claude-mythos": [
+          10,
+          50
+        ],
+        "claude-opus-5": [
+          5,
+          25
+        ],
+        "claude-opus-4-8": [
+          5,
+          25
+        ],
+        "claude-opus-4-7": [
+          5,
+          25
+        ],
+        "claude-opus-4-6": [
+          5,
+          25
+        ],
+        "claude-opus-4-5": [
+          5,
+          25
+        ],
+        "claude-sonnet-5": [
+          2,
+          10
+        ],
+        "claude-sonnet-4": [
+          3,
+          15
+        ],
+        "claude-haiku-4-5": [
+          1,
+          5
+        ],
+        "claude-ai-chat": [
+          3,
+          15
+        ],
+        "gpt-5.6-sol": [
+          5,
+          30
+        ],
+        "gpt-5.6-terra": [
+          2.5,
+          15
+        ],
+        "gpt-5.6-luna": [
+          1,
+          6
+        ],
+        "gpt-5.5": [
+          5,
+          30
+        ],
+        "gpt-5.4": [
+          2.5,
+          15
+        ],
+        "gpt-5.3-codex": [
+          1.75,
+          14
+        ],
+        "gpt-5.2-codex": [
+          1.75,
+          14
+        ],
+        "codex-auto-review": [
+          1.75,
+          14
+        ],
+        "gpt-5-mini": [
+          0.25,
+          2
+        ],
+        "gpt-5": [
+          1.25,
+          10
+        ],
+        "codex-unknown": [
+          1.75,
+          14
+        ]
+      }
+    },
+    {
+      "effective_from": "2026-07-30",
       "rates": {
         "gpt-5.4-mini": [
           0.75,
